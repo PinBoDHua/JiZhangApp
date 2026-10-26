@@ -5,8 +5,11 @@ import {
   activeWorkedMs,
   buildPayslipText,
   canStartPlan,
+  formatDuration,
   formatElapsed,
+  formatMoney,
   formatDateRangeCN,
+  freePlanDates,
   getWeekRange,
   isPlanPast,
   rawMinutes,
@@ -85,6 +88,31 @@ describe('time calculations', () => {
     expect(rawMinutes('08:00', '08:00')).toBe(0);
     expect(workedMinutes('08:00', '08:00', 0)).toBe(0);
   });
+
+  it('ignores an invalid break length instead of returning NaN', () => {
+    expect(workedMinutes('08:00', '17:00', Number.NaN)).toBe(540);
+    expect(workedMinutes('08:00', '17:00', -30)).toBe(540);
+  });
+});
+
+describe('duration formatting', () => {
+  it('never renders a dangling 60 minutes', () => {
+    expect(formatDuration(59.6)).toBe('1 小时');
+    expect(formatDuration(119.6)).toBe('2 小时');
+    expect(formatDuration(0)).toBe('0 小时');
+    expect(formatDuration(125)).toBe('2 小时 5 分');
+    expect(formatDuration(Number.NaN)).toBe('0 小时');
+  });
+});
+
+describe('money formatting', () => {
+  it('keeps two decimals only when needed', () => {
+    expect(formatMoney(1000)).toBe('1,000');
+    expect(formatMoney(1234.5)).toBe('1,234.50');
+    expect(formatMoney(0)).toBe('0');
+    expect(formatMoney(-0.001)).toBe('0');
+    expect(formatMoney(Number.NaN)).toBe('0');
+  });
 });
 
 describe('shift plans', () => {
@@ -149,6 +177,13 @@ describe('shift plans', () => {
       makePlan({ id: 'b', date: '2026-10-25', start: '08:00' }),
     ];
     expect(sortPlans(plans).map((plan) => plan.id)).toEqual(['b', 'a', 'c']);
+  });
+
+  it('drops repeat dates that already have a plan', () => {
+    const dates = repeatDatesISO('2026-10-25', 4);
+    const plans = [makePlan({ date: '2026-11-01' }), makePlan({ date: '2026-11-15' })];
+    expect(freePlanDates(dates, plans)).toEqual(['2026-10-25', '2026-11-08']);
+    expect(freePlanDates(dates, [])).toEqual(dates);
   });
 });
 

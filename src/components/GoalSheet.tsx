@@ -1,4 +1,5 @@
 import { useState } from 'react';
+import { sanitizeNumberText } from '../numberText';
 import { formatMoney } from '../utils';
 import { BottomSheet } from './BottomSheet';
 
@@ -54,12 +55,11 @@ export function GoalSheet({ goal, onClose, onSave, escapeDisabled = false }: Goa
           <div className="goal-input-wrap">
             <span>¥</span>
             <input
-              type="number"
+              type="text"
               inputMode="decimal"
-              min={0}
-              step={100}
+              autoComplete="off"
               value={draft}
-              onChange={(event) => setDraft(event.target.value)}
+              onChange={(event) => setDraft(sanitizeNumberText(event.target.value, false))}
               placeholder="比如 5000"
               aria-label="月收入目标金额"
             />

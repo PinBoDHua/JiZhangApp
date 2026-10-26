@@ -10,7 +10,8 @@ import {
 } from '../utils';
 import { BottomSheet } from './BottomSheet';
 import { MoonIcon } from './Icons';
-import { MultiplierOptions } from './MultiplierOptions';
+import { NumberInput } from './NumberInput';
+import { MultiplierField } from './ShiftFormFields';
 
 interface EndTimingInput {
   breakMinutes: number;
@@ -132,14 +133,13 @@ export function EndTimingSheet({
               −
             </button>
             <span className="stepper-value">
-              <input
-                type="number"
+              <NumberInput
                 inputMode="numeric"
                 min={0}
                 max={maxBreak}
                 value={breakMinutes}
-                onChange={(event) => updateBreak(Number(event.target.value))}
-                aria-label="休息扣除分钟数"
+                onChange={updateBreak}
+                ariaLabel="休息扣除分钟数"
               />
               <small>分</small>
             </span>
@@ -154,13 +154,7 @@ export function EndTimingSheet({
           <p className="field-hint">如有带薪休息，可以把这里调小。</p>
         </div>
 
-        <div className="field">
-          <span className="field-label">
-            计薪倍数
-            <small className="field-label-note">本次结算使用</small>
-          </span>
-          <MultiplierOptions value={multiplier} onChange={setMultiplier} />
-        </div>
+        <MultiplierField value={multiplier} onChange={setMultiplier} note="本次结算使用" />
 
         <div className="field">
           <span className="field-label">备注</span>

@@ -1,5 +1,10 @@
+import { readFileSync } from 'node:fs';
 import react from '@vitejs/plugin-react';
 import { defineConfig, type Plugin } from 'vite';
+
+const pkg = JSON.parse(
+  readFileSync(new URL('./package.json', import.meta.url), 'utf8'),
+) as { version: string };
 
 function serviceWorkerPlugin(): Plugin {
   return {
@@ -31,7 +36,14 @@ const APP_SHELL = '/index.html';
 self.addEventListener('install', (event) => {
   event.waitUntil((async () => {
     const cache = await caches.open(CACHE_NAME);
-    await cache.addAll(PRECACHE);
+    // 单个资源失败不应让整份离线缓存失效
+    await Promise.all(PRECACHE.map(async (url) => {
+      try {
+        await cache.add(url);
+      } catch {
+        /* 忽略单个资源 */
+      }
+    }));
     await self.skipWaiting();
   })());
 });
@@ -54,8 +66,11 @@ self.addEventListener('fetch', (event) => {
     event.respondWith((async () => {
       try {
         const response = await fetch(request);
-        const cache = await caches.open(CACHE_NAME);
-        cache.put(APP_SHELL, response.clone());
+        // 只缓存正常的页面响应，避免把错误页当成离线外壳
+        if (response.ok) {
+          const cache = await caches.open(CACHE_NAME);
+          await cache.put(APP_SHELL, response.clone());
+        }
         return response;
       } catch {
         return (await caches.match(APP_SHELL)) || (await caches.match('/')) || Response.error();
@@ -71,7 +86,7 @@ self.addEventListener('fetch', (event) => {
       const response = await fetch(request);
       if (response.ok) {
         const cache = await caches.open(CACHE_NAME);
-        cache.put(request, response.clone());
+        await cache.put(request, response.clone());
       }
       return response;
     } catch {
@@ -87,4 +102,7 @@ self.addEventListener('fetch', (event) => {
 
 export default defineConfig({
   plugins: [react(), serviceWorkerPlugin()],
+  define: {
+    __APP_VERSION__: JSON.stringify(pkg.version),
+  },
 });

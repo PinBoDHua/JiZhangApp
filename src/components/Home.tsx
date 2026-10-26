@@ -1,4 +1,4 @@
-import { useState, type CSSProperties } from 'react';
+﻿import { useState, type CSSProperties } from 'react';
 import { findMissedPlans } from '../planStats';
 import type { ActiveShift, PlannedShift, ShiftTemplate, WorkRecord } from '../types';
 import {
@@ -38,6 +38,9 @@ import { RecordRow } from './RecordRow';
 import { ActiveTimingCard } from './ActiveTimingCard';
 import { NextPlanCard } from './NextPlanCard';
 import { useClock } from '../useClock';
+
+/** 首屏最多展开的天数，其余点击「显示更早的记录」分批加载，避免长列表一次渲染 */
+const RECORD_GROUPS_PER_PAGE = 10;
 
 interface HomeProps {
   records: WorkRecord[];
@@ -94,6 +97,13 @@ export function Home({
 }: HomeProps) {
   const { date: now } = useClock();
   const [query, setQuery] = useState('');
+  const [visibleGroups, setVisibleGroups] = useState(RECORD_GROUPS_PER_PAGE);
+
+  const changeQuery = (next: string) => {
+    setQuery(next);
+    setVisibleGroups(RECORD_GROUPS_PER_PAGE);
+  };
+
   const monthRecords = recordsInMonth(records, now.getFullYear(), now.getMonth());
   const totalMinutes = monthRecords.reduce((sum, record) => sum + recordMinutes(record), 0);
   const totalEarnings = monthRecords.reduce((sum, record) => sum + recordEarnings(record), 0);
@@ -108,6 +118,8 @@ export function Home({
       )
     : records;
   const groups = groupByDate(sortRecords(filteredRecords));
+  const shownGroups = groups.slice(0, visibleGroups);
+  const hiddenGroupCount = groups.length - shownGroups.length;
   const showSearch = records.length > 5 || normalizedQuery.length > 0;
   const goalPercent = monthlyGoal > 0 ? Math.round((totalEarnings / monthlyGoal) * 100) : 0;
   const goalDone = monthlyGoal > 0 && totalEarnings >= monthlyGoal;
@@ -403,12 +415,12 @@ export function Home({
             <input
               type="search"
               value={query}
-              onChange={(event) => setQuery(event.target.value)}
+              onChange={(event) => changeQuery(event.target.value)}
               placeholder="搜索班次、备注或日期"
               aria-label="搜索记录"
             />
             {query ? (
-              <button type="button" className="search-clear" onClick={() => setQuery('')} aria-label="清空搜索">
+              <button type="button" className="search-clear" onClick={() => changeQuery('')} aria-label="清空搜索">
                 <CloseIcon size={14} />
               </button>
             ) : null}
@@ -440,13 +452,13 @@ export function Home({
           <div className="search-empty">
             <SearchIcon size={22} />
             <p>没有找到相关记录</p>
-            <button type="button" className="ghost-button" onClick={() => setQuery('')}>
+            <button type="button" className="ghost-button" onClick={() => changeQuery('')}>
               清空搜索
             </button>
           </div>
         ) : (
           <div className="day-groups">
-            {groups.map((group) => {
+            {shownGroups.map((group) => {
               const dayMinutes = group.items.reduce((sum, item) => sum + recordMinutes(item), 0);
               const dayEarnings = group.items.reduce((sum, item) => sum + earningsOf(item), 0);
               return (
@@ -468,6 +480,16 @@ export function Home({
                 </div>
               );
             })}
+            {hiddenGroupCount > 0 ? (
+              <button
+                type="button"
+                className="load-more"
+                onClick={() => setVisibleGroups((count) => count + RECORD_GROUPS_PER_PAGE)}
+              >
+                显示更早的记录
+                <span>还有 {hiddenGroupCount} 天</span>
+              </button>
+            ) : null}
             <p className="records-footnote">
               <ClockIcon size={13} />
               收入按实际工时（扣除休息）计算

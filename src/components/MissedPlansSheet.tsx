@@ -34,6 +34,10 @@ export function MissedPlansSheet({
 }: MissedPlansSheetProps) {
   const { date: now } = useClock();
   const missedPlans = findMissedPlans(plans, now, activePlanId);
+  const recordCountByDate = new Map<string, number>();
+  records.forEach((record) => {
+    recordCountByDate.set(record.date, (recordCountByDate.get(record.date) ?? 0) + 1);
+  });
 
   return (
     <BottomSheet
@@ -56,7 +60,7 @@ export function MissedPlansSheet({
             共 {missedPlans.length} 个排班需要处理
           </p>
           {missedPlans.map((plan) => {
-            const recordCount = records.filter((record) => record.date === plan.date).length;
+            const recordCount = recordCountByDate.get(plan.date) ?? 0;
             const minutes = workedMinutes(plan.start, plan.end, plan.breakMinutes);
             return (
               <article

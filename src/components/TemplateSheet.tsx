@@ -1,4 +1,4 @@
-import { useState, type CSSProperties } from 'react';
+﻿import { useState, type CSSProperties } from 'react';
 import { SHIFT_COLORS, SHIFT_COLOR_NAMES, type ShiftTemplate } from '../types';
 import {
   formatDuration,
@@ -6,7 +6,9 @@ import {
   rawMinutes,
   workedMinutes,
 } from '../utils';
+import { validateShiftDraft } from '../shiftDraft';
 import { BottomSheet } from './BottomSheet';
+import { NumberInput } from './NumberInput';
 
 export interface TemplateInput {
   name: string;
@@ -44,15 +46,7 @@ export function TemplateSheet({
   const raw = rawMinutes(draft.start, draft.end);
   const worked = workedMinutes(draft.start, draft.end, draft.breakMinutes);
   const overnight = isOvernight(draft.start, draft.end);
-  const error = !draft.name.trim()
-    ? '请填写班次名称'
-    : raw === 0
-      ? '开始和结束时间不能相同'
-      : draft.breakMinutes >= raw
-        ? '休息时长不能超过班次总时长'
-        : !Number.isFinite(draft.rate) || draft.rate < 0
-          ? '时薪不能为负数'
-          : '';
+  const error = validateShiftDraft({ ...draft, shiftName: draft.name }, raw);
   const valid = error === '';
 
   const patch = (next: Partial<TemplateInput>) => {
@@ -173,13 +167,12 @@ export function TemplateSheet({
                 −
               </button>
               <span className="stepper-value">
-                <input
-                  type="number"
+                <NumberInput
                   inputMode="numeric"
                   min={0}
                   value={draft.breakMinutes}
-                  onChange={(event) => patch({ breakMinutes: Math.max(0, Number(event.target.value) || 0) })}
-                  aria-label="休息分钟数"
+                  onChange={(breakMinutes) => patch({ breakMinutes })}
+                  ariaLabel="休息分钟数"
                 />
                 <small>分</small>
               </span>
@@ -196,14 +189,12 @@ export function TemplateSheet({
             <span className="field-label">默认时薪</span>
             <div className="input-affix">
               <span>¥</span>
-              <input
-                type="number"
+              <NumberInput
                 inputMode="decimal"
                 min={0}
-                step={0.5}
                 value={draft.rate}
-                onChange={(event) => patch({ rate: Math.max(0, Number(event.target.value) || 0) })}
-                aria-label="默认时薪"
+                onChange={(rate) => patch({ rate })}
+                ariaLabel="默认时薪"
               />
               <span>/时</span>
             </div>

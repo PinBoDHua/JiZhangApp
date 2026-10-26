@@ -48,6 +48,12 @@ export function repeatDatesISO(dateISO: string, weeks: number): string[] {
   return Array.from({ length: count }, (_, index) => addDaysISO(dateISO, index * 7));
 }
 
+/** Drops dates that already hold a plan so weekly repeats never stack duplicates. */
+export function freePlanDates(dates: string[], plans: { date: string }[]): string[] {
+  const occupied = new Set(plans.map((plan) => plan.date));
+  return dates.filter((date) => !occupied.has(date));
+}
+
 export function isPlanPast(plan: PlannedShift, now: Date): boolean {
   const endDate = isOvernight(plan.start, plan.end) ? addDaysISO(plan.date, 1) : plan.date;
   const today = toISODate(now);
@@ -137,7 +143,8 @@ export function workedMinutes(
   breakMinutes: number,
 ): number {
   const total = rawMinutes(start, end);
-  return Math.max(0, total - Math.max(0, breakMinutes));
+  const rest = Number.isFinite(breakMinutes) ? Math.max(0, breakMinutes) : 0;
+  return Math.max(0, total - rest);
 }
 
 export function earningsOf(input: {
@@ -172,17 +179,27 @@ export function activeWorkedMinutes(shift: ActiveShift, nowMs: number): number {
   return Math.floor(activeWorkedMs(shift, nowMs) / 60_000);
 }
 
+const integerMoneyFormat = new Intl.NumberFormat('zh-CN', {
+  minimumFractionDigits: 0,
+  maximumFractionDigits: 2,
+});
+
+const decimalMoneyFormat = new Intl.NumberFormat('zh-CN', {
+  minimumFractionDigits: 2,
+  maximumFractionDigits: 2,
+});
+
 export function formatMoney(value: number): string {
-  const rounded = Math.round(value * 100) / 100;
-  return new Intl.NumberFormat('zh-CN', {
-    minimumFractionDigits: Number.isInteger(rounded) ? 0 : 2,
-    maximumFractionDigits: 2,
-  }).format(rounded);
+  const safe = Number.isFinite(value) ? value : 0;
+  const rounded = Math.round(safe * 100) / 100;
+  if (rounded === 0) return integerMoneyFormat.format(0);
+  return (Number.isInteger(rounded) ? integerMoneyFormat : decimalMoneyFormat).format(rounded);
 }
 
 export function formatDuration(minutes: number): string {
-  const hours = Math.floor(minutes / 60);
-  const rest = Math.round(minutes % 60);
+  const total = Math.max(0, Math.round(Number.isFinite(minutes) ? minutes : 0));
+  const hours = Math.floor(total / 60);
+  const rest = total % 60;
   if (rest === 0) return `${hours} 小时`;
   return `${hours} 小时 ${rest} 分`;
 }

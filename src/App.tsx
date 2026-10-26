@@ -1,7 +1,6 @@
 import { useCallback, useEffect, useRef, useState } from 'react';
 import { Capacitor } from '@capacitor/core';
 import { App as CapacitorApp } from '@capacitor/app';
-import { LocalNotifications } from '@capacitor/local-notifications';
 import { BottomNav } from './components/BottomNav';
 import { Calendar, type CalendarMode } from './components/Calendar';
 import { ConfirmDialog } from './components/ConfirmDialog';
@@ -18,39 +17,19 @@ import { StartTimingSheet } from './components/StartTimingSheet';
 import { Stats } from './components/Stats';
 import { TemplateSheet, type TemplateInput } from './components/TemplateSheet';
 import { Toast } from './components/Toast';
-import { applyNativeStatusBar, exportFile } from './native';
+import { useAppData } from './hooks/useAppData';
+import { useInstallPrompt } from './hooks/useInstallPrompt';
+import { useReminderSync } from './hooks/useReminderSync';
+import { useTheme } from './hooks/useTheme';
+import { useToast } from './hooks/useToast';
+import { exportFile } from './native';
 import { restorePendingPlan, toPlanHistoryEntry } from './planStats';
 import { normalizeReminderLead } from './reminders';
-import {
-  initialReminderStatus,
-  requestExactAlarmSetting,
-  requestReminderPermission,
-  syncPlannedReminders,
-  type ReminderStatus,
-} from './reminderService';
 import type { RotationShift } from './rotation';
-import {
-  buildBackup,
-  loadActiveShift,
-  loadPlanHistory,
-  loadPlans,
-  loadPreferences,
-  loadRecords,
-  loadSettlements,
-  loadTemplates,
-  parseBackup,
-  saveActiveShift,
-  savePlanHistory,
-  savePlans,
-  savePreferences,
-  saveRecords,
-  saveSettlements,
-  saveTemplates,
-} from './storage';
+import { buildBackup, parseBackup, STORAGE_ERROR_EVENT } from './storage';
 import type {
   ActiveShift,
   MonthlySettlement,
-  PlanHistoryEntry,
   PlanHistoryStatus,
   PlanInput,
   PlannedShift,
@@ -67,6 +46,7 @@ import {
   findLatestRecord,
   formatDateCN,
   formatTimeHM,
+  freePlanDates,
   rawMinutes,
   sortPlans,
   toISODate,
@@ -75,24 +55,12 @@ import {
   uid,
 } from './utils';
 
-interface BeforeInstallPromptEvent extends Event {
-  prompt: () => Promise<void>;
-  userChoice: Promise<{ outcome: 'accepted' | 'dismissed' }>;
-}
-
 interface ConfirmState {
   title: string;
   message: string;
   confirmLabel: string;
   danger?: boolean;
   onConfirm: () => void;
-}
-
-interface ToastState {
-  message: string;
-  id: number;
-  actionLabel?: string;
-  onAction?: () => void;
 }
 
 type SheetState =
@@ -116,43 +84,36 @@ type SheetState =
       settlement?: MonthlySettlement;
     };
 
-function readStandalone(): boolean {
-  if (typeof window === 'undefined') return false;
-  const iosStandalone = (navigator as Navigator & { standalone?: boolean }).standalone === true;
-  return window.matchMedia('(display-mode: standalone)').matches || iosStandalone;
-}
-
 export default function App() {
-  const [records, setRecords] = useState<WorkRecord[]>(() => loadRecords());
-  const [templates, setTemplates] = useState<ShiftTemplate[]>(() => loadTemplates());
-  const [preferences, setPreferences] = useState(() => loadPreferences());
-  const [activeShift, setActiveShift] = useState<ActiveShift | null>(() => loadActiveShift());
-  const [settlements, setSettlements] = useState<MonthlySettlement[]>(() => loadSettlements());
-  const [plans, setPlans] = useState<PlannedShift[]>(() => loadPlans());
-  const [planHistory, setPlanHistory] = useState<PlanHistoryEntry[]>(() => loadPlanHistory());
-  const [reminderStatus, setReminderStatus] = useState<ReminderStatus>(() =>
-    initialReminderStatus(),
-  );
+  const {
+    records,
+    setRecords,
+    templates,
+    setTemplates,
+    preferences,
+    setPreferences,
+    activeShift,
+    setActiveShift,
+    settlements,
+    setSettlements,
+    plans,
+    setPlans,
+    planHistory,
+    setPlanHistory,
+  } = useAppData();
+  const { toast, setToast, notify, notifyWithAction } = useToast();
+  const resolvedTheme = useTheme(preferences.theme);
+  const { installAvailable, isStandalone, install } = useInstallPrompt();
   const [calendarFocus, setCalendarFocus] = useState<{
     date: string;
     token: number;
   } | null>(null);
-  const [systemDark, setSystemDark] = useState(
-    () => window.matchMedia('(prefers-color-scheme: dark)').matches,
-  );
   const [tab, setTab] = useState<Tab>('home');
   const [statsPeriod, setStatsPeriod] = useState<StatsPeriod>('month');
   const [calendarMode, setCalendarMode] = useState<CalendarMode>('records');
   const [sheet, setSheet] = useState<SheetState | null>(null);
   const [confirm, setConfirm] = useState<ConfirmState | null>(null);
-  const [toast, setToast] = useState<ToastState | null>(null);
-  const [installPrompt, setInstallPrompt] = useState<BeforeInstallPromptEvent | null>(null);
-  const [isStandalone, setIsStandalone] = useState(
-    () => Capacitor.isNativePlatform() || readStandalone(),
-  );
   const mainRef = useRef<HTMLElement>(null);
-  const resolvedTheme =
-    preferences.theme === 'system' ? (systemDark ? 'dark' : 'light') : preferences.theme;
   const latestRecord = findLatestRecord(records);
   const latestTemplate = latestRecord?.templateId
     ? templates.find((template) => template.id === latestRecord.templateId)
@@ -162,6 +123,27 @@ export default function App() {
     if (next !== 'calendar') setCalendarFocus(null);
     setTab(next);
   }, []);
+
+  const openPlanFromNotification = useCallback(
+    (date: string) => {
+      setSheet(null);
+      goToTab('calendar');
+      setCalendarMode('plans');
+      setCalendarFocus({ date, token: Date.now() });
+    },
+    [goToTab],
+  );
+
+  const {
+    status: reminderStatus,
+    requestPermission,
+    requestExactAlarm,
+  } = useReminderSync({
+    plans,
+    enabled: preferences.reminderEnabled,
+    leadMinutes: preferences.reminderLeadMinutes,
+    onOpenPlanDate: openPlanFromNotification,
+  });
 
   useEffect(() => {
     if (!Capacitor.isNativePlatform()) return;
@@ -192,89 +174,6 @@ export default function App() {
   }, [confirm, sheet, tab, goToTab]);
 
   useEffect(() => {
-    saveRecords(records);
-  }, [records]);
-
-  useEffect(() => {
-    saveTemplates(templates);
-  }, [templates]);
-
-  useEffect(() => {
-    savePreferences(preferences);
-  }, [preferences]);
-
-  useEffect(() => {
-    saveActiveShift(activeShift);
-  }, [activeShift]);
-
-  useEffect(() => {
-    saveSettlements(settlements);
-  }, [settlements]);
-
-  useEffect(() => {
-    savePlans(sortPlans(plans));
-  }, [plans]);
-
-  useEffect(() => {
-    savePlanHistory(planHistory);
-  }, [planHistory]);
-
-  useEffect(() => {
-    let disposed = false;
-    void syncPlannedReminders(
-      plans,
-      preferences.reminderEnabled,
-      preferences.reminderLeadMinutes,
-    ).then((status) => {
-      if (!disposed) setReminderStatus(status);
-    });
-    return () => {
-      disposed = true;
-    };
-  }, [plans, preferences.reminderEnabled, preferences.reminderLeadMinutes]);
-
-  useEffect(() => {
-    if (!Capacitor.isNativePlatform()) return;
-    let disposed = false;
-    const handles: { remove: () => void }[] = [];
-    const keep = (handle: { remove: () => void }) => {
-      if (disposed) {
-        handle.remove();
-      } else {
-        handles.push(handle);
-      }
-    };
-
-    void CapacitorApp.addListener('appStateChange', ({ isActive }) => {
-      if (!isActive) return;
-      void syncPlannedReminders(
-        plans,
-        preferences.reminderEnabled,
-        preferences.reminderLeadMinutes,
-      ).then(setReminderStatus);
-    }).then(keep);
-
-    void LocalNotifications.addListener(
-      'localNotificationActionPerformed',
-      (action) => {
-        const extra = action.notification.extra as
-          | { type?: string; date?: string }
-          | undefined;
-        if (extra?.type !== 'shift-reminder' || typeof extra.date !== 'string') return;
-        setSheet(null);
-        goToTab('calendar');
-        setCalendarMode('plans');
-        setCalendarFocus({ date: extra.date, token: Date.now() });
-      },
-    ).then(keep);
-
-    return () => {
-      disposed = true;
-      handles.forEach((handle) => handle.remove());
-    };
-  }, [plans, preferences.reminderEnabled, preferences.reminderLeadMinutes, goToTab]);
-
-  useEffect(() => {
     document.title = activeShift
       ? activeShift.pausedAt
         ? '已暂停 · 工时账本'
@@ -283,60 +182,16 @@ export default function App() {
   }, [activeShift]);
 
   useEffect(() => {
-    const media = window.matchMedia('(prefers-color-scheme: dark)');
-    const onChange = (event: MediaQueryListEvent) => setSystemDark(event.matches);
-    media.addEventListener('change', onChange);
-    return () => media.removeEventListener('change', onChange);
-  }, []);
-
-  useEffect(() => {
-    document.documentElement.dataset.theme = resolvedTheme;
-    document.documentElement.style.colorScheme = resolvedTheme;
-    const themeColor = document.querySelector('meta[name="theme-color"]');
-    themeColor?.setAttribute('content', resolvedTheme === 'dark' ? '#0f1512' : '#f4f0e7');
-    void applyNativeStatusBar(resolvedTheme);
-  }, [resolvedTheme]);
-
-  useEffect(() => {
-    if (!toast) return;
-    const timer = window.setTimeout(
-      () => setToast(null),
-      toast.actionLabel ? 6000 : 2600,
-    );
-    return () => window.clearTimeout(timer);
-  }, [toast]);
-
-  useEffect(() => {
-    const onBeforeInstall = (event: Event) => {
-      event.preventDefault();
-      setInstallPrompt(event as BeforeInstallPromptEvent);
-    };
-    const onInstalled = () => {
-      setInstallPrompt(null);
-      setIsStandalone(true);
-    };
-    window.addEventListener('beforeinstallprompt', onBeforeInstall);
-    window.addEventListener('appinstalled', onInstalled);
-    return () => {
-      window.removeEventListener('beforeinstallprompt', onBeforeInstall);
-      window.removeEventListener('appinstalled', onInstalled);
-    };
-  }, []);
-
-  useEffect(() => {
     mainRef.current?.scrollTo({ top: 0 });
   }, [tab]);
 
-  const notify = useCallback((message: string) => {
-    setToast({ message, id: Date.now() });
-  }, []);
-
-  const notifyWithAction = useCallback(
-    (message: string, actionLabel: string, onAction: () => void) => {
-      setToast({ message, id: Date.now(), actionLabel, onAction });
-    },
-    [],
-  );
+  useEffect(() => {
+    const onStorageError = () => {
+      notify('保存失败：本地存储不可用或空间已满，请先导出备份');
+    };
+    window.addEventListener(STORAGE_ERROR_EVENT, onStorageError);
+    return () => window.removeEventListener(STORAGE_ERROR_EVENT, onStorageError);
+  }, [notify]);
 
   const closeSheet = useCallback(() => setSheet(null), []);
   const archivePlan = useCallback(
@@ -348,7 +203,8 @@ export default function App() {
         entry,
       ]);
     },
-    [],
+    // setter 来自 useAppData，与 useState 的 setter 一样稳定
+    [setPlans, setPlanHistory],
   );
 
   const requestSkipPlan = useCallback(
@@ -423,6 +279,7 @@ export default function App() {
         `工资条-${sheet.context.monthLabel}.txt`,
         text,
         'text/plain;charset=utf-8',
+        '保存或分享工资条',
       );
       notify(Capacitor.isNativePlatform() ? '工资条已生成' : '工资条已导出');
     } catch (error) {
@@ -451,8 +308,7 @@ export default function App() {
       notify('排班提醒已关闭');
       return;
     }
-    const status = await requestReminderPermission();
-    setReminderStatus(status);
+    const status = await requestPermission();
     if (status.permission === 'granted') {
       setPreferences((prev) => ({ ...prev, reminderEnabled: true }));
       notify('排班提醒已开启');
@@ -469,13 +325,10 @@ export default function App() {
   };
 
   const handleRequestExactAlarm = async () => {
-    const status = await requestExactAlarmSetting();
-    setReminderStatus(status);
-    if (status.exactAlarm === 'granted') {
-      notify('精确提醒已开启');
-    } else {
-      notify('未开启精确提醒，通知可能略有延迟');
-    }
+    const status = await requestExactAlarm();
+    notify(
+      status.exactAlarm === 'granted' ? '精确提醒已开启' : '未开启精确提醒，通知可能略有延迟',
+    );
   };
 
   const handleSavePlan = (input: PlanInput, dates: string[]) => {
@@ -492,8 +345,14 @@ export default function App() {
       );
       notify('排班已更新');
     } else {
+      // 单日排班允许一天多班；按周重复时跳过已有排班的日期，避免重复堆积
+      const targetDates = dates.length > 1 ? freePlanDates(dates, plans) : dates;
+      if (targetDates.length === 0) {
+        notify('这些日期都已有排班，换个起始日期试试');
+        return;
+      }
       const timestamp = Date.now();
-      const created = dates.map((date) => ({
+      const created = targetDates.map((date) => ({
         ...input,
         date,
         id: uid(),
@@ -501,7 +360,14 @@ export default function App() {
         updatedAt: timestamp,
       }));
       setPlans((prev) => sortPlans([...prev, ...created]));
-      notify(created.length > 1 ? `已排 ${created.length} 个班次` : '排班已保存');
+      const skipped = dates.length - targetDates.length;
+      notify(
+        skipped > 0
+          ? `已排 ${created.length} 个班次，跳过 ${skipped} 个已有排班的日期`
+          : created.length > 1
+            ? `已排 ${created.length} 个班次`
+            : '排班已保存',
+      );
     }
     setSheet(null);
   };
@@ -595,6 +461,7 @@ export default function App() {
   const handleStartTiming = (template: ShiftTemplate) => {
     if (activeShift) {
       setSheet(null);
+      notify('已有计时进行中，先结束或放弃当前打卡');
       return;
     }
     const now = new Date();
@@ -825,6 +692,7 @@ export default function App() {
         `工时账本-备份-${todayISO()}.json`,
         JSON.stringify(backup, null, 2),
         'application/json',
+        '保存或分享备份',
       );
       setPreferences((prev) => ({ ...prev, lastBackupAt: Date.now() }));
       notify(Capacitor.isNativePlatform() ? '备份已生成' : '备份已导出');
@@ -840,6 +708,7 @@ export default function App() {
         `工时账本-${todayISO()}.csv`,
         `\uFEFF${toCsv(records)}`,
         'text/csv;charset=utf-8',
+        '保存或分享表格',
       );
       notify(Capacitor.isNativePlatform() ? '表格已生成' : '表格已导出');
     } catch (error) {
@@ -870,10 +739,18 @@ export default function App() {
           !backup.planHistory && planHistory.length > 0
             ? '（备份不含完成历史，现有完成历史将清空）'
             : ''
-        }，且无法撤销。`,
+        }，导入后可在提示条里撤销。`,
         confirmLabel: '导入',
         danger: true,
         onConfirm: () => {
+          const snapshot = {
+            records,
+            templates,
+            preferences,
+            settlements,
+            plans,
+            planHistory,
+          };
           setRecords(backup.records);
           setTemplates(backup.templates);
           if (backup.preferences) {
@@ -888,7 +765,14 @@ export default function App() {
           setPlanHistory(backup.planHistory ?? []);
           setConfirm(null);
           goToTab('home');
-          notify('备份已导入');
+          notifyWithAction('备份已导入', '撤销', () => {
+            setRecords(snapshot.records);
+            setTemplates(snapshot.templates);
+            setPreferences(snapshot.preferences);
+            setSettlements(snapshot.settlements);
+            setPlans(snapshot.plans);
+            setPlanHistory(snapshot.planHistory);
+          });
         },
       });
     } catch (error) {
@@ -906,26 +790,21 @@ export default function App() {
       planHistory.length > 0 ? `和 ${planHistory.length} 条完成排班历史` : '';
     setConfirm({
       title: '清空所有记录？',
-      message: `将删除全部 ${records.length} 条记录${historyHint}，${keepHint}。此操作无法撤销，建议先导出备份。`,
+      message: `将删除全部 ${records.length} 条记录${historyHint}，${keepHint}。清空后可在提示条里撤销，也建议先导出备份。`,
       confirmLabel: '清空',
       danger: true,
       onConfirm: () => {
+        const clearedRecords = records;
+        const clearedHistory = planHistory;
         setRecords([]);
         setPlanHistory([]);
         setConfirm(null);
-        notify('记录已清空');
+        notifyWithAction('记录已清空', '撤销', () => {
+          setRecords(clearedRecords);
+          setPlanHistory(clearedHistory);
+        });
       },
     });
-  };
-
-  const handleInstall = async () => {
-    if (!installPrompt) return;
-    await installPrompt.prompt();
-    const choice = await installPrompt.userChoice;
-    if (choice.outcome === 'accepted') {
-      setIsStandalone(true);
-    }
-    setInstallPrompt(null);
   };
 
   return (
@@ -1013,8 +892,8 @@ export default function App() {
               onExportCsv={handleExportCsv}
               onImportFile={handleImportFile}
               onClearRecords={requestClearRecords}
-              installAvailable={Boolean(installPrompt)}
-              onInstall={handleInstall}
+              installAvailable={installAvailable}
+              onInstall={install}
               isStandalone={isStandalone}
             />
           ) : null}

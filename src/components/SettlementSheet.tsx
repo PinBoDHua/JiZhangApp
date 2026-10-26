@@ -10,11 +10,14 @@ import {
   formatDuration,
   formatMoney,
   settlementTotals,
+  toISODate,
   uid,
 } from '../utils';
 import { useClock } from '../useClock';
+import { sanitizeNumberText } from '../numberText';
 import { BottomSheet } from './BottomSheet';
 import { CloseIcon, PlusIcon } from './Icons';
+import { NumberInput } from './NumberInput';
 
 const KIND_LABELS: Record<SettlementAdjustmentKind, string> = {
   bonus: '奖金',
@@ -60,7 +63,7 @@ export function SettlementSheet({
   escapeDisabled = false,
 }: SettlementSheetProps) {
   const { date } = useClock();
-  const today = `${date.getFullYear()}-${String(date.getMonth() + 1).padStart(2, '0')}-${String(date.getDate()).padStart(2, '0')}`;
+  const today = toISODate(date);
   const [adjustments, setAdjustments] = useState<SettlementAdjustment[]>(
     () => settlement?.adjustments.map((item) => ({ ...item })) ?? [],
   );
@@ -210,19 +213,14 @@ export function SettlementSheet({
                   />
                   <div className="adjustment-amount">
                     <span>{KIND_SIGNS[item.kind]}¥</span>
-                    <input
-                      type="number"
+                    <NumberInput
                       inputMode="decimal"
                       min={0}
-                      step={10}
-                      value={item.amount === 0 ? '' : item.amount}
-                      onChange={(event) =>
-                        updateAdjustment(item.id, {
-                          amount: Math.max(0, Number(event.target.value) || 0),
-                        })
-                      }
+                      value={item.amount}
+                      emptyWhenZero
+                      onChange={(amount) => updateAdjustment(item.id, { amount })}
                       placeholder="0"
-                      aria-label={`${KIND_LABELS[item.kind]}金额`}
+                      ariaLabel={`${KIND_LABELS[item.kind]}金额`}
                     />
                   </div>
                   <button
@@ -299,12 +297,13 @@ export function SettlementSheet({
                 <div className="input-affix">
                   <span>¥</span>
                   <input
-                    type="number"
+                    type="text"
                     inputMode="decimal"
-                    min={0}
-                    step={10}
+                    autoComplete="off"
                     value={paidAmountInput}
-                    onChange={(event) => setPaidAmountInput(event.target.value)}
+                    onChange={(event) =>
+                      setPaidAmountInput(sanitizeNumberText(event.target.value, false))
+                    }
                     placeholder={formatMoney(totals.netDue)}
                     aria-label="实际到账金额"
                   />

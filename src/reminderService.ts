@@ -5,6 +5,7 @@ import {
   buildReminderCandidates,
   buildReminderContent,
   reminderIdForPlan,
+  type ReminderCandidate,
 } from './reminders';
 
 export type ReminderPermission = PermissionState | 'unsupported';
@@ -14,6 +15,12 @@ export interface ReminderStatus {
   permission: ReminderPermission;
   exactAlarm: PermissionState | null;
   scheduled: number;
+}
+
+interface PendingNotification {
+  id: number;
+  schedule?: { at?: unknown };
+  extra?: unknown;
 }
 
 const REMINDER_EXTRA_TYPE = 'shift-reminder';
@@ -35,6 +42,11 @@ function unsupportedStatus(): ReminderStatus {
   return { supported: false, permission: 'unsupported', exactAlarm: null, scheduled: 0 };
 }
 
+function isManaged(notification: PendingNotification): boolean {
+  const extra = notification.extra as { type?: string } | undefined;
+  return extra?.type === REMINDER_EXTRA_TYPE;
+}
+
 async function checkExactAlarm(): Promise<PermissionState | null> {
   try {
     const status = await LocalNotifications.checkExactNotificationSetting();
@@ -44,16 +56,69 @@ async function checkExactAlarm(): Promise<PermissionState | null> {
   }
 }
 
-async function cancelManagedNotifications(): Promise<void> {
+async function pendingManaged(): Promise<PendingNotification[]> {
   const pending = await LocalNotifications.getPending();
-  const managed = pending.notifications.filter(
-    (notification) =>
-      (notification.extra as { type?: string } | undefined)?.type === REMINDER_EXTRA_TYPE,
-  );
-  if (managed.length === 0) return;
+  return (pending.notifications as PendingNotification[]).filter(isManaged);
+}
+
+async function cancelAll(notifications: PendingNotification[]): Promise<void> {
+  if (notifications.length === 0) return;
   await LocalNotifications.cancel({
-    notifications: managed.map((notification) => ({ id: notification.id })),
+    notifications: notifications.map((notification) => ({ id: notification.id })),
   });
+}
+
+function scheduledAtMs(notification: PendingNotification): number | null {
+  const at = notification.schedule?.at;
+  if (at instanceof Date) return Number.isFinite(at.getTime()) ? at.getTime() : null;
+  if (typeof at === 'string' || typeof at === 'number') {
+    const parsed = new Date(at).getTime();
+    return Number.isFinite(parsed) ? parsed : null;
+  }
+  return null;
+}
+
+/**
+ * 已排的提醒与目标一致时跳过取消/重建，避免每次回到前台都重排通知。
+ */
+function sameSchedule(
+  managed: PendingNotification[],
+  candidates: ReminderCandidate[],
+): boolean {
+  if (managed.length !== candidates.length) return false;
+  const desired = new Map(
+    candidates.map((candidate) => [reminderIdForPlan(candidate.plan.id), candidate.notifyAt]),
+  );
+  if (desired.size !== managed.length) return false;
+  return managed.every((notification) => {
+    const expected = desired.get(notification.id);
+    if (expected === undefined) return false;
+    const actual = scheduledAtMs(notification);
+    return actual !== null && Math.abs(actual - expected) < 1000;
+  });
+}
+
+function toNotification(candidate: ReminderCandidate) {
+  const content = buildReminderContent(
+    candidate.plan,
+    candidate.notifyAt,
+    candidate.leadMinutes,
+  );
+  return {
+    id: reminderIdForPlan(candidate.plan.id),
+    title: content.title,
+    body: content.body,
+    schedule: {
+      at: new Date(candidate.notifyAt),
+      allowWhileIdle: true,
+    },
+    autoCancel: true,
+    extra: {
+      type: REMINDER_EXTRA_TYPE,
+      planId: candidate.plan.id,
+      date: candidate.plan.date,
+    },
+  };
 }
 
 export async function getReminderStatus(): Promise<ReminderStatus> {
@@ -61,16 +126,12 @@ export async function getReminderStatus(): Promise<ReminderStatus> {
   try {
     const permission = await LocalNotifications.checkPermissions();
     const exactAlarm = await checkExactAlarm();
-    const pending = await LocalNotifications.getPending();
-    const scheduled = pending.notifications.filter(
-      (notification) =>
-        (notification.extra as { type?: string } | undefined)?.type === REMINDER_EXTRA_TYPE,
-    ).length;
+    const managed = await pendingManaged();
     return {
       supported: true,
       permission: permission.display,
       exactAlarm,
-      scheduled,
+      scheduled: managed.length,
     };
   } catch {
     return { supported: true, permission: 'denied', exactAlarm: null, scheduled: 0 };
@@ -99,9 +160,10 @@ async function performSync(
   try {
     const permission = await LocalNotifications.checkPermissions();
     const exactAlarm = await checkExactAlarm();
-    await cancelManagedNotifications();
+    const managed = await pendingManaged();
 
     if (!enabled || permission.display !== 'granted') {
+      await cancelAll(managed);
       return {
         supported: true,
         permission: permission.display,
@@ -111,31 +173,13 @@ async function performSync(
     }
 
     const candidates = buildReminderCandidates(plans, Date.now(), leadMinutes);
-    if (candidates.length > 0) {
-      await LocalNotifications.schedule({
-        notifications: candidates.map((candidate) => {
-          const content = buildReminderContent(
-            candidate.plan,
-            candidate.notifyAt,
-            candidate.leadMinutes,
-          );
-          return {
-            id: reminderIdForPlan(candidate.plan.id),
-            title: content.title,
-            body: content.body,
-            schedule: {
-              at: new Date(candidate.notifyAt),
-              allowWhileIdle: true,
-            },
-            autoCancel: true,
-            extra: {
-              type: REMINDER_EXTRA_TYPE,
-              planId: candidate.plan.id,
-              date: candidate.plan.date,
-            },
-          };
-        }),
-      });
+    if (!sameSchedule(managed, candidates)) {
+      await cancelAll(managed);
+      if (candidates.length > 0) {
+        await LocalNotifications.schedule({
+          notifications: candidates.map(toNotification),
+        });
+      }
     }
 
     return {

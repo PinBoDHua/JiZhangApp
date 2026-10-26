@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest';
-import { buildBackup, parseBackup } from './storage';
+import { buildBackup, isISODate, isTimeHM, parseBackup } from './storage';
 import type {
   BackupPreferences,
   MonthlySettlement,
@@ -121,5 +121,114 @@ describe('backup with shift plans', () => {
     expect(parsed.plans).toBeUndefined();
     expect(parsed.planHistory).toBeUndefined();
     expect(parsed.records).toHaveLength(1);
+  });
+
+  it('refuses to bake in unreadable plans instead of silently dropping them', () => {
+    const broken = {
+      app: 'shift-ledger',
+      version: 1,
+      exportedAt: '2026-10-25T00:00:00.000Z',
+      templates: [template],
+      records: [record],
+      plans: [makePlan({}), { id: 'plan-broken', date: '2026-10-26' }],
+    };
+
+    expect(() => parseBackup(JSON.stringify(broken))).toThrow('备份中有无法识别的排班');
+  });
+
+  it('refuses unreadable settlements and history too', () => {
+    const brokenSettlement = {
+      app: 'shift-ledger',
+      version: 1,
+      exportedAt: '2026-10-25T00:00:00.000Z',
+      templates: [template],
+      records: [record],
+      settlements: [{ ...settlement, status: 'unknown' }],
+    };
+    expect(() => parseBackup(JSON.stringify(brokenSettlement))).toThrow(
+      '备份中有无法识别的工资结算',
+    );
+
+    const brokenHistory = {
+      app: 'shift-ledger',
+      version: 1,
+      exportedAt: '2026-10-25T00:00:00.000Z',
+      templates: [template],
+      records: [record],
+      planHistory: [{ ...makePlan({}), status: 'unknown', recordId: null, completedAt: 1 }],
+    };
+    expect(() => parseBackup(JSON.stringify(brokenHistory))).toThrow(
+      '备份中有无法识别的完成排班历史',
+    );
+  });
+
+  it('rejects dates and times that the app could never have written', () => {
+    const backupWith = (item: Record<string, unknown>) => ({
+      app: 'shift-ledger',
+      version: 1,
+      exportedAt: '2026-10-25T00:00:00.000Z',
+      templates: [template],
+      records: [{ ...record, ...item }],
+    });
+
+    expect(() => parseBackup(JSON.stringify(backupWith({ date: '2026/10/24' })))).toThrow(
+      '备份中有无法识别的记录',
+    );
+    expect(() => parseBackup(JSON.stringify(backupWith({ date: '2026-02-30' })))).toThrow(
+      '备份中有无法识别的记录',
+    );
+    expect(() => parseBackup(JSON.stringify(backupWith({ start: '8:00' })))).toThrow(
+      '备份中有无法识别的记录',
+    );
+    expect(() => parseBackup(JSON.stringify(backupWith({ end: '24:00' })))).toThrow(
+      '备份中有无法识别的记录',
+    );
+    expect(() => parseBackup(JSON.stringify(backupWith({ rate: Number.NaN })))).toThrow(
+      '备份中有无法识别的记录',
+    );
+    expect(() => parseBackup(JSON.stringify(backupWith({ multiplier: 0 })))).toThrow(
+      '备份中有无法识别的记录',
+    );
+    expect(parseBackup(JSON.stringify(backupWith({}))).records).toHaveLength(1);
+  });
+
+  it('validates ISO dates and HH:MM times on their own', () => {
+    expect(isISODate('2026-10-24')).toBe(true);
+    expect(isISODate('2024-02-29')).toBe(true);
+    expect(isISODate('2026-02-29')).toBe(false);
+    expect(isISODate('2026-13-01')).toBe(false);
+    expect(isISODate('2026-1-1')).toBe(false);
+    expect(isISODate(20261024)).toBe(false);
+    expect(isTimeHM('00:00')).toBe(true);
+    expect(isTimeHM('23:59')).toBe(true);
+    expect(isTimeHM('24:00')).toBe(false);
+    expect(isTimeHM('9:05')).toBe(false);
+    expect(isTimeHM('08:60')).toBe(false);
+  });
+
+  it('keeps the newest copy when a merged backup repeats an id', () => {
+    const merged = {
+      app: 'shift-ledger',
+      version: 1,
+      exportedAt: '2026-10-25T00:00:00.000Z',
+      templates: [template],
+      records: [
+        { ...record, note: '旧' },
+        { ...record, note: '新', updatedAt: 9 },
+      ],
+      plans: [makePlan({ note: '旧' }), makePlan({ note: '新' })],
+      settlements: [
+        { ...settlement, note: '旧', updatedAt: 1 },
+        { ...settlement, note: '新', updatedAt: 2 },
+      ],
+    };
+
+    const parsed = parseBackup(JSON.stringify(merged));
+    expect(parsed.records).toHaveLength(1);
+    expect(parsed.records[0].note).toBe('新');
+    expect(parsed.plans).toHaveLength(1);
+    expect(parsed.plans?.[0].note).toBe('新');
+    expect(parsed.settlements).toHaveLength(1);
+    expect(parsed.settlements?.[0].note).toBe('新');
   });
 });

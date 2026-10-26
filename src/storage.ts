@@ -22,6 +22,23 @@ const SETTLEMENTS_KEY = 'shift-ledger.settlements.v1';
 const PLANS_KEY = 'shift-ledger.plans.v1';
 const PLAN_HISTORY_KEY = 'shift-ledger.plan-history.v1';
 
+const ALL_KEYS = [
+  RECORDS_KEY,
+  TEMPLATES_KEY,
+  PREFERENCES_KEY,
+  ACTIVE_SHIFT_KEY,
+  SETTLEMENTS_KEY,
+  PLANS_KEY,
+  PLAN_HISTORY_KEY,
+];
+
+export const STORAGE_ERROR_EVENT = 'shift-ledger:storage-error';
+
+export interface StorageErrorDetail {
+  key: string;
+  message: string;
+}
+
 function readJson<T>(key: string, fallback: T): T {
   try {
     const raw = localStorage.getItem(key);
@@ -32,6 +49,64 @@ function readJson<T>(key: string, fallback: T): T {
   }
 }
 
+function reportStorageError(key: string, error: unknown): void {
+  if (typeof window === 'undefined' || typeof window.dispatchEvent !== 'function') return;
+  const detail: StorageErrorDetail = {
+    key,
+    message: error instanceof Error ? error.message : String(error),
+  };
+  window.dispatchEvent(new CustomEvent<StorageErrorDetail>(STORAGE_ERROR_EVENT, { detail }));
+}
+
+/**
+ * 写入失败（存储被禁用、配额已满）不应让应用白屏：只在界面提示用户导出备份。
+ */
+function writeJson(key: string, value: unknown): void {
+  try {
+    localStorage.setItem(key, JSON.stringify(value));
+  } catch (error) {
+    reportStorageError(key, error);
+  }
+}
+
+/**
+ * 原样导出本机数据，供异常兜底或排查使用：不经过任何校验，坏数据也能拿走。
+ */
+export function readRawStorageSnapshot(): Record<string, string> {
+  const dump: Record<string, string> = {};
+  ALL_KEYS.forEach((key) => {
+    try {
+      const raw = localStorage.getItem(key);
+      if (raw !== null) dump[key] = raw;
+    } catch {
+      // 读取失败时跳过该键
+    }
+  });
+  return dump;
+}
+
+const ISO_DATE = /^\d{4}-\d{2}-\d{2}$/;
+const TIME_HM = /^([01]\d|2[0-3]):[0-5]\d$/;
+
+/** 只接受 YYYY-MM-DD，且必须是真实存在的日期（2026-02-30 不算） */
+export function isISODate(value: unknown): value is string {
+  if (typeof value !== 'string' || !ISO_DATE.test(value)) return false;
+  const [year, month, day] = value.split('-').map(Number);
+  const date = new Date(year, month - 1, day);
+  return (
+    date.getFullYear() === year && date.getMonth() === month - 1 && date.getDate() === day
+  );
+}
+
+/** 只接受 24 小时制的 HH:MM */
+export function isTimeHM(value: unknown): value is string {
+  return typeof value === 'string' && TIME_HM.test(value);
+}
+
+function isFiniteNumber(value: unknown, min?: number): value is number {
+  return typeof value === 'number' && Number.isFinite(value) && (min === undefined || value >= min);
+}
+
 function isShiftTemplate(value: unknown): value is ShiftTemplate {
   if (!value || typeof value !== 'object') return false;
   const item = value as Record<string, unknown>;
@@ -39,10 +114,10 @@ function isShiftTemplate(value: unknown): value is ShiftTemplate {
     typeof item.id === 'string' &&
     typeof item.name === 'string' &&
     typeof item.color === 'string' &&
-    typeof item.start === 'string' &&
-    typeof item.end === 'string' &&
-    typeof item.breakMinutes === 'number' &&
-    typeof item.rate === 'number'
+    isTimeHM(item.start) &&
+    isTimeHM(item.end) &&
+    isFiniteNumber(item.breakMinutes, 0) &&
+    isFiniteNumber(item.rate, 0)
   );
 }
 
@@ -51,14 +126,15 @@ function isWorkRecord(value: unknown): value is WorkRecord {
   const item = value as Record<string, unknown>;
   return (
     typeof item.id === 'string' &&
-    typeof item.date === 'string' &&
+    isISODate(item.date) &&
     typeof item.shiftName === 'string' &&
     typeof item.shiftColor === 'string' &&
-    typeof item.start === 'string' &&
-    typeof item.end === 'string' &&
-    typeof item.breakMinutes === 'number' &&
-    typeof item.rate === 'number' &&
-    typeof item.multiplier === 'number' &&
+    isTimeHM(item.start) &&
+    isTimeHM(item.end) &&
+    isFiniteNumber(item.breakMinutes, 0) &&
+    isFiniteNumber(item.rate, 0) &&
+    isFiniteNumber(item.multiplier) &&
+    item.multiplier > 0 &&
     typeof item.note === 'string' &&
     typeof item.createdAt === 'number' &&
     typeof item.updatedAt === 'number'
@@ -72,18 +148,17 @@ export function loadRecords(): WorkRecord[] {
 }
 
 export function saveRecords(records: WorkRecord[]): void {
-  localStorage.setItem(RECORDS_KEY, JSON.stringify(records));
+  writeJson(RECORDS_KEY, records);
 }
 
 export function loadTemplates(): ShiftTemplate[] {
   const templates = readJson<unknown>(TEMPLATES_KEY, DEFAULT_TEMPLATES);
-  if (!Array.isArray(templates)) return DEFAULT_TEMPLATES;
-  const valid = templates.filter(isShiftTemplate);
-  return valid;
+  if (!Array.isArray(templates)) return DEFAULT_TEMPLATES.map((template) => ({ ...template }));
+  return templates.filter(isShiftTemplate).map((template) => ({ ...template }));
 }
 
 export function saveTemplates(templates: ShiftTemplate[]): void {
-  localStorage.setItem(TEMPLATES_KEY, JSON.stringify(templates));
+  writeJson(TEMPLATES_KEY, templates);
 }
 
 function isBackupPreferences(value: unknown): value is BackupPreferences {
@@ -117,7 +192,7 @@ export function loadPreferences(): AppPreferences {
 }
 
 export function savePreferences(preferences: AppPreferences): void {
-  localStorage.setItem(PREFERENCES_KEY, JSON.stringify(preferences));
+  writeJson(PREFERENCES_KEY, preferences);
 }
 
 function isActiveShift(value: unknown): value is ActiveShift {
@@ -130,8 +205,8 @@ function isActiveShift(value: unknown): value is ActiveShift {
       typeof item.sourcePlanId === 'string') &&
     typeof item.shiftName === 'string' &&
     typeof item.shiftColor === 'string' &&
-    typeof item.startDate === 'string' &&
-    typeof item.startTime === 'string' &&
+    isISODate(item.startDate) &&
+    isTimeHM(item.startTime) &&
     typeof item.startedAt === 'number' &&
     Number.isFinite(item.startedAt) &&
     item.startedAt > 0 &&
@@ -140,11 +215,9 @@ function isActiveShift(value: unknown): value is ActiveShift {
       (typeof item.pausedAt === 'number' && Number.isFinite(item.pausedAt))) &&
     (item.pausedMs === undefined ||
       (typeof item.pausedMs === 'number' && Number.isFinite(item.pausedMs) && item.pausedMs >= 0)) &&
-    typeof item.breakMinutes === 'number' &&
-    item.breakMinutes >= 0 &&
-    typeof item.rate === 'number' &&
-    item.rate >= 0 &&
-    typeof item.multiplier === 'number' &&
+    isFiniteNumber(item.breakMinutes, 0) &&
+    isFiniteNumber(item.rate, 0) &&
+    isFiniteNumber(item.multiplier) &&
     item.multiplier > 0 &&
     typeof item.note === 'string'
   );
@@ -166,9 +239,13 @@ export function loadActiveShift(): ActiveShift | null {
 
 export function saveActiveShift(shift: ActiveShift | null): void {
   if (shift) {
-    localStorage.setItem(ACTIVE_SHIFT_KEY, JSON.stringify(shift));
-  } else {
+    writeJson(ACTIVE_SHIFT_KEY, shift);
+    return;
+  }
+  try {
     localStorage.removeItem(ACTIVE_SHIFT_KEY);
+  } catch (error) {
+    reportStorageError(ACTIVE_SHIFT_KEY, error);
   }
 }
 
@@ -177,7 +254,7 @@ function isMonthlySettlement(value: unknown): value is MonthlySettlement {
   const item = value as Record<string, unknown>;
   if (typeof item.monthKey !== 'string' || !/^\d{4}-\d{2}$/.test(item.monthKey)) return false;
   if (item.status !== 'pending' && item.status !== 'paid') return false;
-  if (!(item.paidAt === null || typeof item.paidAt === 'string')) return false;
+  if (!(item.paidAt === null || isISODate(item.paidAt))) return false;
   if (
     !(
       item.paidAmount === null ||
@@ -216,7 +293,7 @@ export function loadSettlements(): MonthlySettlement[] {
 }
 
 export function saveSettlements(settlements: MonthlySettlement[]): void {
-  localStorage.setItem(SETTLEMENTS_KEY, JSON.stringify(settlements));
+  writeJson(SETTLEMENTS_KEY, settlements);
 }
 
 function isPlannedShift(value: unknown): value is PlannedShift {
@@ -224,17 +301,15 @@ function isPlannedShift(value: unknown): value is PlannedShift {
   const item = value as Record<string, unknown>;
   return (
     typeof item.id === 'string' &&
-    typeof item.date === 'string' &&
+    isISODate(item.date) &&
     (item.templateId === null || typeof item.templateId === 'string') &&
     typeof item.shiftName === 'string' &&
     typeof item.shiftColor === 'string' &&
-    typeof item.start === 'string' &&
-    typeof item.end === 'string' &&
-    typeof item.breakMinutes === 'number' &&
-    item.breakMinutes >= 0 &&
-    typeof item.rate === 'number' &&
-    item.rate >= 0 &&
-    typeof item.multiplier === 'number' &&
+    isTimeHM(item.start) &&
+    isTimeHM(item.end) &&
+    isFiniteNumber(item.breakMinutes, 0) &&
+    isFiniteNumber(item.rate, 0) &&
+    isFiniteNumber(item.multiplier) &&
     item.multiplier > 0 &&
     typeof item.note === 'string' &&
     typeof item.createdAt === 'number' &&
@@ -274,7 +349,7 @@ export function loadPlans(): PlannedShift[] {
 }
 
 export function savePlans(plans: PlannedShift[]): void {
-  localStorage.setItem(PLANS_KEY, JSON.stringify(plans));
+  writeJson(PLANS_KEY, plans);
 }
 
 export function loadPlanHistory(): PlanHistoryEntry[] {
@@ -291,7 +366,48 @@ export function loadPlanHistory(): PlanHistoryEntry[] {
 }
 
 export function savePlanHistory(history: PlanHistoryEntry[]): void {
-  localStorage.setItem(PLAN_HISTORY_KEY, JSON.stringify(history));
+  writeJson(PLAN_HISTORY_KEY, history);
+}
+
+function collectValid<T>(
+  rows: unknown[],
+  guard: (value: unknown) => value is T,
+  label: string,
+): T[] {
+  const valid = rows.filter(guard);
+  if (valid.length !== rows.length) {
+    throw new Error(`备份中有无法识别的${label}`);
+  }
+  return valid;
+}
+
+/** 手工合并过的备份可能带重复 id：保留后出现的副本，避免 React key 冲突和误删两条 */
+function dedupeById<T extends { id: string }>(rows: T[]): T[] {
+  if (rows.length < 2) return rows;
+  const map = new Map<string, T>();
+  rows.forEach((row) => map.set(row.id, row));
+  return map.size === rows.length ? rows : Array.from(map.values());
+}
+
+function dedupePlanHistory(rows: PlanHistoryEntry[]): PlanHistoryEntry[] {
+  if (rows.length < 2) return rows;
+  const map = new Map<string, PlanHistoryEntry>();
+  rows.forEach((row) => {
+    const existing = map.get(row.id);
+    if (!existing || row.completedAt >= existing.completedAt) map.set(row.id, row);
+  });
+  return map.size === rows.length ? rows : Array.from(map.values());
+}
+
+function dedupeSettlements(rows: MonthlySettlement[]): MonthlySettlement[] {
+  if (rows.length < 2) return rows;
+  const map = new Map<string, MonthlySettlement>();
+  rows.forEach((row) => {
+    const existing = map.get(row.monthKey);
+    if (!existing || row.updatedAt >= existing.updatedAt) map.set(row.monthKey, row);
+  });
+  if (map.size === rows.length) return rows;
+  return Array.from(map.values()).sort((a, b) => a.monthKey.localeCompare(b.monthKey));
 }
 
 export function parseBackup(text: string): BackupData {
@@ -309,19 +425,16 @@ export function parseBackup(text: string): BackupData {
   if (!Array.isArray(backup.records) || !Array.isArray(backup.templates)) {
     throw new Error('备份内容不完整');
   }
-  const records = backup.records.filter(isWorkRecord);
-  const templates = backup.templates.filter(isShiftTemplate);
-  if (records.length !== backup.records.length || templates.length !== backup.templates.length) {
-    throw new Error('备份中有无法识别的数据');
-  }
+  const records = dedupeById(collectValid(backup.records, isWorkRecord, '记录'));
+  const templates = dedupeById(collectValid(backup.templates, isShiftTemplate, '班次'));
   const settlements = Array.isArray(backup.settlements)
-    ? backup.settlements.filter(isMonthlySettlement)
+    ? dedupeSettlements(collectValid(backup.settlements, isMonthlySettlement, '工资结算'))
     : undefined;
   const plans = Array.isArray(backup.plans)
-    ? backup.plans.filter(isPlannedShift)
+    ? dedupeById(collectValid(backup.plans, isPlannedShift, '排班'))
     : undefined;
   const planHistory = Array.isArray(backup.planHistory)
-    ? backup.planHistory.filter(isPlanHistoryEntry)
+    ? dedupePlanHistory(collectValid(backup.planHistory, isPlanHistoryEntry, '完成排班历史'))
     : undefined;
   return {
     app: 'shift-ledger',

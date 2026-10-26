@@ -1,4 +1,4 @@
-:root {
+﻿:root {
   --paper: #f4f0e7;
   --paper-deep: #ede7db;
   --surface: #fbf8f2;
@@ -38,6 +38,10 @@
   --bar-data: #7a9183;
   --bar-hover: #526b5d;
   --pill-bg: rgba(255, 253, 248, 0.62);
+  /* 边到边安全区：Capacitor 8 在 Android 注入 --safe-area-inset-*，
+     网页与 iOS 走 env()，两边都取不到时按 0 处理 */
+  --safe-top: var(--safe-area-inset-top, env(safe-area-inset-top, 0px));
+  --safe-bottom: var(--safe-area-inset-bottom, env(safe-area-inset-bottom, 0px));
 }
 
 html[data-theme='dark'] {
@@ -165,7 +169,7 @@ a:focus-visible {
 }
 
 .screen {
-  padding: calc(22px + env(safe-area-inset-top)) 20px 108px;
+  padding: calc(22px + var(--safe-top)) 20px 108px;
 }
 
 /* ---------- Common ---------- */
@@ -1435,7 +1439,7 @@ a:focus-visible {
   align-items: center;
   justify-content: space-around;
   gap: 2px;
-  padding: 7px 14px calc(7px + env(safe-area-inset-bottom));
+  padding: 7px 14px calc(7px + var(--safe-bottom));
   border-top: 1px solid var(--line);
   background: var(--nav-bg);
   backdrop-filter: blur(18px);
@@ -1545,7 +1549,7 @@ a:focus-visible {
   grid-template-columns: 48px 1fr 48px;
   flex: none;
   align-items: center;
-  padding: calc(13px + env(safe-area-inset-top)) 13px 12px;
+  padding: calc(13px + var(--safe-top)) 13px 12px;
   border-bottom: 1px solid var(--line);
   background: var(--sheet-header-bg);
 }
@@ -1621,7 +1625,7 @@ a:focus-visible {
   flex: none;
   flex-direction: column;
   gap: 8px;
-  padding: 11px 20px calc(15px + env(safe-area-inset-bottom));
+  padding: 11px 20px calc(15px + var(--safe-bottom));
   border-top: 1px solid var(--line);
   background: var(--surface);
   box-shadow: 0 -20px 32px -32px rgba(23, 36, 30, 0.5);
@@ -2180,7 +2184,7 @@ a:focus-visible {
 
 .toast {
   position: absolute;
-  bottom: calc(80px + env(safe-area-inset-bottom));
+  bottom: calc(80px + var(--safe-bottom));
   left: 50%;
   z-index: 90;
   display: flex;
@@ -5427,4 +5431,84 @@ html[data-theme='dark'] .page-sub {
   color: var(--muted);
   font-size: 9.5px;
   text-align: center;
+}
+
+/* ---------- Crash fallback ---------- */
+.crash-screen {
+  display: flex;
+  flex-direction: column;
+  justify-content: center;
+  gap: 12px;
+  width: 100%;
+  max-width: 560px;
+  min-height: 100vh;
+  min-height: 100dvh;
+  margin: 0 auto;
+  padding: 32px 24px;
+  background: var(--paper);
+  color: var(--ink);
+}
+
+.crash-screen h1 {
+  margin: 0;
+  font-size: 20px;
+  font-weight: 720;
+  letter-spacing: -0.01em;
+}
+
+.crash-screen p {
+  margin: 0;
+  color: var(--ink-soft);
+  font-size: 12.5px;
+  line-height: 1.65;
+}
+
+.crash-detail {
+  padding: 10px 12px;
+  border-radius: 12px;
+  background: var(--paper-deep);
+  color: var(--muted);
+  font-family: ui-monospace, SFMono-Regular, Menlo, monospace;
+  font-size: 10.5px;
+  word-break: break-word;
+}
+
+.crash-actions {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 10px;
+  margin-top: 6px;
+}
+
+/* ---------- Progressive record list ---------- */
+
+.load-more {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  gap: 7px;
+  width: 100%;
+  margin-top: 14px;
+  padding: 11px 16px;
+  border: 1px dashed var(--line-strong);
+  border-radius: 14px;
+  background: transparent;
+  color: var(--ink-soft);
+  font-family: inherit;
+  font-size: 11px;
+  font-weight: 650;
+  cursor: pointer;
+  transition: background 0.16s ease, border-color 0.16s ease;
+}
+
+.load-more:hover {
+  background: var(--hover-bg);
+  border-color: var(--line-strong);
+}
+
+.load-more span {
+  color: var(--muted);
+  font-size: 10px;
+  font-weight: 500;
+  font-variant-numeric: tabular-nums;
 }

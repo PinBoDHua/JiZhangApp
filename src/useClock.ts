@@ -18,16 +18,26 @@ function tick(): void {
   listeners.forEach((listener) => listener());
 }
 
+function scheduleTick(): void {
+  // 对齐到下一个整分钟，取整分钟的显示和日期切换才会准点发生
+  const delay = 60_000 - (Date.now() % 60_000);
+  timer = window.setTimeout(() => {
+    tick();
+    scheduleTick();
+  }, delay);
+}
+
 function subscribe(listener: () => void): () => void {
   listeners.add(listener);
   if (listeners.size === 1) {
-    timer = window.setInterval(tick, 60_000);
+    tick();
+    scheduleTick();
     document.addEventListener('visibilitychange', handleVisibilityChange);
   }
   return () => {
     listeners.delete(listener);
     if (listeners.size === 0) {
-      if (timer !== undefined) window.clearInterval(timer);
+      if (timer !== undefined) window.clearTimeout(timer);
       timer = undefined;
       document.removeEventListener('visibilitychange', handleVisibilityChange);
     }

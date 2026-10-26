@@ -19,6 +19,10 @@ const config: CapacitorConfig = {
       style: 'LIGHT',
       backgroundColor: '#f4f0e7',
     },
+    SystemBars: {
+      // 边到边下由插件注入安全区变量，配合 CSS 里的 --safe-area-inset-* 使用
+      insetsHandling: 'css',
+    },
     LocalNotifications: {
       smallIcon: 'ic_stat_shift',
       iconColor: '#D08A2E',

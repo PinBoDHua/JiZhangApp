@@ -1,4 +1,5 @@
-import { useEffect, useRef } from 'react';
+import { useEffect } from 'react';
+import { useFocusTrap } from '../useFocusTrap';
 
 interface ConfirmDialogProps {
   title: string;
@@ -17,10 +18,9 @@ export function ConfirmDialog({
   onCancel,
   danger = false,
 }: ConfirmDialogProps) {
-  const cancelRef = useRef<HTMLButtonElement>(null);
+  const dialogRef = useFocusTrap<HTMLDivElement>();
 
   useEffect(() => {
-    cancelRef.current?.focus();
     const onKeyDown = (event: KeyboardEvent) => {
       if (event.key === 'Escape') onCancel();
     };
@@ -29,14 +29,25 @@ export function ConfirmDialog({
   }, [onCancel]);
 
   return (
-    <div className="dialog-backdrop" role="presentation" onMouseDown={(event) => {
-      if (event.target === event.currentTarget) onCancel();
-    }}>
-      <div className="dialog" role="alertdialog" aria-modal="true" aria-labelledby="dialog-title">
+    <div
+      className="dialog-backdrop"
+      role="presentation"
+      onMouseDown={(event) => {
+        if (event.target === event.currentTarget) onCancel();
+      }}
+    >
+      <div
+        ref={dialogRef}
+        className="dialog"
+        role="alertdialog"
+        aria-modal="true"
+        aria-labelledby="dialog-title"
+        tabIndex={-1}
+      >
         <h2 id="dialog-title">{title}</h2>
         <p>{message}</p>
         <div className="dialog-actions">
-          <button ref={cancelRef} type="button" className="ghost-button" onClick={onCancel}>
+          <button type="button" className="ghost-button" onClick={onCancel}>
             取消
           </button>
           <button

@@ -352,6 +352,7 @@ export function Stats({
         onPrevious={() => stepRange(-1)}
         onNext={() => stepRange(1)}
         onReset={resetRange}
+        allowFuture
       />
 
       <section className="stats-total-card" aria-label={totalLabel}>

@@ -1,4 +1,5 @@
 import { useEffect, type ReactNode } from 'react';
+import { useFocusTrap } from '../useFocusTrap';
 import { CloseIcon } from './Icons';
 
 interface BottomSheetProps {
@@ -20,6 +21,8 @@ export function BottomSheet({
   footer,
   escapeDisabled = false,
 }: BottomSheetProps) {
+  const sheetRef = useFocusTrap<HTMLElement>();
+
   useEffect(() => {
     const onKeyDown = (event: KeyboardEvent) => {
       if (event.key === 'Escape' && !escapeDisabled) onClose();
@@ -30,7 +33,14 @@ export function BottomSheet({
 
   return (
     <div className="sheet-backdrop">
-      <section className="sheet" role="dialog" aria-modal="true" aria-label={title}>
+      <section
+        ref={sheetRef}
+        className="sheet"
+        role="dialog"
+        aria-modal="true"
+        aria-label={title}
+        tabIndex={-1}
+      >
         <header className="sheet-header">
           <button type="button" className="icon-button sheet-close" onClick={onClose} aria-label="关闭">
             <CloseIcon size={20} />

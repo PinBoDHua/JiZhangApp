@@ -1,7 +1,6 @@
-import { useState, type CSSProperties } from 'react';
+﻿import { useState } from 'react';
 import {
   SHIFT_COLORS,
-  SHIFT_COLOR_NAMES,
   type PlanInput,
   type PlannedShift,
   type ShiftTemplate,
@@ -12,16 +11,21 @@ import {
   formatDateCN,
   formatDuration,
   formatMoney,
-  isOvernight,
   rawMinutes,
   repeatDatesISO,
   todayISO,
   workedMinutes,
 } from '../utils';
 import { REMINDER_LEAD_OPTIONS } from '../reminders';
+import { validateShiftDraft } from '../shiftDraft';
 import { BottomSheet } from './BottomSheet';
-import { CalendarIcon, MoonIcon } from './Icons';
-import { MultiplierOptions } from './MultiplierOptions';
+import { CalendarIcon } from './Icons';
+import {
+  BreakRateField,
+  MultiplierField,
+  ShiftChipsField,
+  WorkTimeField,
+} from './ShiftFormFields';
 
 interface Draft {
   date: string;
@@ -144,39 +148,18 @@ export function PlanSheet({
     rate: draft.rate,
     multiplier: draft.multiplier,
   });
-  const overnight = isOvernight(draft.start, draft.end);
-  const isCustom = draft.templateId === null;
   const globalLeadLabel =
     REMINDER_LEAD_OPTIONS.find((option) => option.minutes === globalReminderLeadMinutes)?.label ??
     `${globalReminderLeadMinutes} 分钟`;
   const dates = plan ? [draft.date] : repeatDatesISO(draft.date, repeatWeeks);
   const lastDate = dates.at(-1) ?? draft.date;
-  const error = !draft.shiftName.trim()
-    ? '请填写班次名称'
-    : raw === 0
-      ? '开始和结束时间不能相同'
-      : draft.breakMinutes >= raw
-        ? '休息时长不能超过班次总时长'
-        : !Number.isFinite(draft.rate) || draft.rate < 0
-          ? '时薪不能为负数'
-          : '';
+  const error = validateShiftDraft(draft, raw);
   const valid = error === '';
 
   const patch = (next: Partial<Draft>) => {
     setDraft((prev) => ({ ...prev, ...next }));
   };
 
-  const selectTemplate = (item: ShiftTemplate) => {
-    patch({
-      templateId: item.id,
-      shiftName: item.name,
-      shiftColor: item.color,
-      start: item.start,
-      end: item.end,
-      breakMinutes: item.breakMinutes,
-      rate: item.rate,
-    });
-  };
 
   const handleSave = () => {
     if (!valid) return;
@@ -307,152 +290,34 @@ export function PlanSheet({
           </div>
         ) : null}
 
-        <div className="field">
-          <span className="field-label">班次</span>
-          <div className="chip-row shift-chips">
-            {templates.map((item) => (
-              <button
-                key={item.id}
-                type="button"
-                className={`shift-chip${draft.templateId === item.id ? ' is-active' : ''}`}
-                style={{ '--shift-color': item.color } as CSSProperties}
-                onClick={() => selectTemplate(item)}
-              >
-                <span className="shift-dot" aria-hidden="true" />
-                {item.name}
-              </button>
-            ))}
-            <button
-              type="button"
-              className={`shift-chip is-custom${isCustom ? ' is-active' : ''}`}
-              onClick={() => patch({ templateId: null })}
-            >
-              自定义
-            </button>
-          </div>
-          {isCustom ? (
-            <div className="custom-panel">
-              <input
-                className="text-input"
-                value={draft.shiftName}
-                onChange={(event) => patch({ shiftName: event.target.value })}
-                placeholder="填写班次名称，如：中班"
-                maxLength={12}
-                aria-label="班次名称"
-              />
-              <div className="swatch-row compact">
-                {SHIFT_COLORS.map((color) => (
-                  <button
-                    key={color}
-                    type="button"
-                    className={`swatch${draft.shiftColor === color ? ' is-active' : ''}`}
-                    style={{ '--swatch-color': color } as CSSProperties}
-                    onClick={() => patch({ shiftColor: color })}
-                    aria-label={`选择${SHIFT_COLOR_NAMES[color]}色`}
-                    aria-pressed={draft.shiftColor === color}
-                  />
-                ))}
-              </div>
-            </div>
-          ) : null}
-        </div>
+        <ShiftChipsField
+          templates={templates}
+          templateId={draft.templateId}
+          shiftName={draft.shiftName}
+          shiftColor={draft.shiftColor}
+          onChange={patch}
+        />
 
-        <div className="field">
-          <span className="field-label">班次时间</span>
-          <div className="time-row">
-            <label className="time-card">
-              <span>开始</span>
-              <input
-                type="time"
-                value={draft.start}
-                onChange={(event) => patch({ start: event.target.value })}
-              />
-            </label>
-            <span className="time-arrow" aria-hidden="true">→</span>
-            <label className="time-card">
-              <span>
-                结束
-                {overnight ? <small className="overnight-tag"><MoonIcon size={11} />次日</small> : null}
-              </span>
-              <input
-                type="time"
-                value={draft.end}
-                onChange={(event) => patch({ end: event.target.value })}
-              />
-            </label>
-          </div>
-          <p className="field-hint">
-            {overnight
-              ? '下班时间早于上班时间，已自动按跨越午夜计算'
-              : raw === 0
-                ? '开始和结束时间相同时无法计算工时'
-                : `净工时 ${formatDuration(minutes)}（已扣除休息）`}
-          </p>
-        </div>
+        <WorkTimeField
+          label="班次时间"
+          start={draft.start}
+          end={draft.end}
+          breakMinutes={draft.breakMinutes}
+          onChange={patch}
+        />
 
-        <div className="form-grid">
-          <div className="field">
-            <span className="field-label">休息</span>
-            <div className="stepper">
-              <button
-                type="button"
-                onClick={() => patch({ breakMinutes: Math.max(0, draft.breakMinutes - 30) })}
-                aria-label="减少 30 分钟休息"
-              >
-                −
-              </button>
-              <span className="stepper-value">
-                <input
-                  type="number"
-                  inputMode="numeric"
-                  min={0}
-                  value={draft.breakMinutes}
-                  onChange={(event) =>
-                    patch({ breakMinutes: Math.max(0, Number(event.target.value) || 0) })
-                  }
-                  aria-label="休息分钟数"
-                />
-                <small>分</small>
-              </span>
-              <button
-                type="button"
-                onClick={() => patch({ breakMinutes: draft.breakMinutes + 30 })}
-                aria-label="增加 30 分钟休息"
-              >
-                +
-              </button>
-            </div>
-          </div>
-          <div className="field">
-            <span className="field-label">时薪</span>
-            <div className="input-affix">
-              <span>¥</span>
-              <input
-                type="number"
-                inputMode="decimal"
-                min={0}
-                step={0.5}
-                value={draft.rate}
-                onChange={(event) =>
-                  patch({ rate: Math.max(0, Number(event.target.value) || 0) })
-                }
-                aria-label="时薪"
-              />
-              <span>/时</span>
-            </div>
-          </div>
-        </div>
+        <BreakRateField
+          breakMinutes={draft.breakMinutes}
+          rate={draft.rate}
+          totalMinutes={raw}
+          onChange={patch}
+        />
 
-        <div className="field">
-          <span className="field-label">
-            计薪倍数
-            <small className="field-label-note">加班时使用</small>
-          </span>
-          <MultiplierOptions
-            value={draft.multiplier}
-            onChange={(multiplier) => patch({ multiplier })}
-          />
-        </div>
+        <MultiplierField
+          value={draft.multiplier}
+          onChange={(multiplier) => patch({ multiplier })}
+          note="加班时使用"
+        />
 
         {reminderAvailable ? (
           <div className="field">
