@@ -6,6 +6,7 @@ import {
   type BackupData,
   type BackupPreferences,
   type MonthlySettlement,
+  type PlanHistoryEntry,
   type PlannedShift,
   type ShiftTemplate,
   type WorkRecord,
@@ -19,6 +20,7 @@ const PREFERENCES_KEY = 'shift-ledger.preferences.v1';
 const ACTIVE_SHIFT_KEY = 'shift-ledger.active-shift.v1';
 const SETTLEMENTS_KEY = 'shift-ledger.settlements.v1';
 const PLANS_KEY = 'shift-ledger.plans.v1';
+const PLAN_HISTORY_KEY = 'shift-ledger.plan-history.v1';
 
 function readJson<T>(key: string, fallback: T): T {
   try {
@@ -236,7 +238,30 @@ function isPlannedShift(value: unknown): value is PlannedShift {
     item.multiplier > 0 &&
     typeof item.note === 'string' &&
     typeof item.createdAt === 'number' &&
-    typeof item.updatedAt === 'number'
+    typeof item.updatedAt === 'number' &&
+    (item.reminderEnabled === undefined || typeof item.reminderEnabled === 'boolean') &&
+    (item.reminderLeadMinutes === undefined ||
+      item.reminderLeadMinutes === null ||
+      (typeof item.reminderLeadMinutes === 'number' &&
+        Number.isFinite(item.reminderLeadMinutes) &&
+        item.reminderLeadMinutes >= 0))
+  );
+}
+
+function isPlanHistoryEntry(value: unknown): value is PlanHistoryEntry {
+  if (!isPlannedShift(value)) return false;
+  const item = value as unknown as Record<string, unknown>;
+  return (
+    (item.status === 'completed' || item.status === 'skipped') &&
+    (item.recordId === null || typeof item.recordId === 'string') &&
+    typeof item.completedAt === 'number' &&
+    Number.isFinite(item.completedAt)
+  );
+}
+
+function sortPlanHistory(history: PlanHistoryEntry[]): PlanHistoryEntry[] {
+  return [...history].sort(
+    (a, b) => a.date.localeCompare(b.date) || a.start.localeCompare(b.start),
   );
 }
 
@@ -250,6 +275,23 @@ export function loadPlans(): PlannedShift[] {
 
 export function savePlans(plans: PlannedShift[]): void {
   localStorage.setItem(PLANS_KEY, JSON.stringify(plans));
+}
+
+export function loadPlanHistory(): PlanHistoryEntry[] {
+  const stored = readJson<unknown>(PLAN_HISTORY_KEY, []);
+  if (!Array.isArray(stored)) return [];
+  const map = new Map<string, PlanHistoryEntry>();
+  stored.filter(isPlanHistoryEntry).forEach((entry) => {
+    const existing = map.get(entry.id);
+    if (!existing || entry.completedAt >= existing.completedAt) {
+      map.set(entry.id, entry);
+    }
+  });
+  return sortPlanHistory(Array.from(map.values()));
+}
+
+export function savePlanHistory(history: PlanHistoryEntry[]): void {
+  localStorage.setItem(PLAN_HISTORY_KEY, JSON.stringify(history));
 }
 
 export function parseBackup(text: string): BackupData {
@@ -278,6 +320,9 @@ export function parseBackup(text: string): BackupData {
   const plans = Array.isArray(backup.plans)
     ? backup.plans.filter(isPlannedShift)
     : undefined;
+  const planHistory = Array.isArray(backup.planHistory)
+    ? backup.planHistory.filter(isPlanHistoryEntry)
+    : undefined;
   return {
     app: 'shift-ledger',
     version: 1,
@@ -288,6 +333,7 @@ export function parseBackup(text: string): BackupData {
     ...(isBackupPreferences(backup.preferences) ? { preferences: backup.preferences } : {}),
     ...(settlements ? { settlements } : {}),
     ...(plans ? { plans } : {}),
+    ...(planHistory ? { planHistory } : {}),
   };
 }
 
@@ -297,6 +343,7 @@ export function buildBackup(
   preferences: BackupPreferences,
   settlements: MonthlySettlement[],
   plans: PlannedShift[],
+  planHistory: PlanHistoryEntry[],
 ): BackupData {
   return {
     app: 'shift-ledger',
@@ -307,5 +354,6 @@ export function buildBackup(
     preferences,
     settlements: [...settlements].sort((a, b) => a.monthKey.localeCompare(b.monthKey)),
     plans: sortPlans(plans),
+    planHistory: sortPlanHistory(planHistory),
   };
 }

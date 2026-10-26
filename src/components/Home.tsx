@@ -1,4 +1,5 @@
 import { useState, type CSSProperties } from 'react';
+import { findMissedPlans } from '../planStats';
 import type { ActiveShift, PlannedShift, ShiftTemplate, WorkRecord } from '../types';
 import {
   addDaysISO,
@@ -22,6 +23,8 @@ import {
 } from '../utils';
 import {
   ArrowUpRightIcon,
+  BellIcon,
+  ChevronRightIcon,
   ClockIcon,
   CloseIcon,
   LogoMark,
@@ -50,6 +53,7 @@ interface HomeProps {
   onStartPlan: (plan: PlannedShift) => void;
   onRecordPlan: (plan: PlannedShift) => void;
   onEditPlan: (plan: PlannedShift) => void;
+  onOpenMissed: () => void;
   onClockOut: () => void;
   onPauseTiming: () => void;
   onResumeTiming: () => void;
@@ -82,6 +86,7 @@ export function Home({
   onStartPlan,
   onRecordPlan,
   onEditPlan,
+  onOpenMissed,
   onClockOut,
   onPauseTiming,
   onResumeTiming,
@@ -108,6 +113,11 @@ export function Home({
   const goalDone = monthlyGoal > 0 && totalEarnings >= monthlyGoal;
 
   const today = toISODate(now);
+  const missedPlans = findMissedPlans(
+    plans,
+    now,
+    activeShift?.sourcePlanId ?? null,
+  );
   const upcomingPlans = sortPlans(plans.filter((plan) => !isPlanPast(plan, now)));
   const nextPlan = upcomingPlans[0] ?? null;
   const upcomingCount = upcomingPlans.filter(
@@ -190,6 +200,26 @@ export function Home({
           onRecord={onRecordPlan}
           onEdit={onEditPlan}
         />
+      ) : null}
+
+      {missedPlans.length > 0 ? (
+        <button
+          type="button"
+          className="missed-card"
+          onClick={onOpenMissed}
+          aria-label={`有 ${missedPlans.length} 个排班待处理，点击处理`}
+        >
+          <span className="missed-card-icon">
+            <BellIcon size={18} />
+          </span>
+          <span className="missed-card-main">
+            <strong>{missedPlans.length} 个排班待处理</strong>
+            <span>
+              最早：{formatDateCN(missedPlans[0].date)} · {missedPlans[0].shiftName}
+            </span>
+          </span>
+          <ChevronRightIcon size={16} className="missed-card-chevron" />
+        </button>
       ) : null}
 
       <section className="hero-card" aria-label="本月收入概览">

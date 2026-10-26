@@ -8,6 +8,7 @@ import { ConfirmDialog } from './components/ConfirmDialog';
 import { EndTimingSheet } from './components/EndTimingSheet';
 import { GoalSheet } from './components/GoalSheet';
 import { Home } from './components/Home';
+import { MissedPlansSheet } from './components/MissedPlansSheet';
 import { PlanSheet } from './components/PlanSheet';
 import { RecordSheet } from './components/RecordSheet';
 import { RotationSheet } from './components/RotationSheet';
@@ -18,6 +19,7 @@ import { Stats } from './components/Stats';
 import { TemplateSheet, type TemplateInput } from './components/TemplateSheet';
 import { Toast } from './components/Toast';
 import { applyNativeStatusBar, exportFile } from './native';
+import { restorePendingPlan, toPlanHistoryEntry } from './planStats';
 import { normalizeReminderLead } from './reminders';
 import {
   initialReminderStatus,
@@ -30,6 +32,7 @@ import type { RotationShift } from './rotation';
 import {
   buildBackup,
   loadActiveShift,
+  loadPlanHistory,
   loadPlans,
   loadPreferences,
   loadRecords,
@@ -37,6 +40,7 @@ import {
   loadTemplates,
   parseBackup,
   saveActiveShift,
+  savePlanHistory,
   savePlans,
   savePreferences,
   saveRecords,
@@ -46,6 +50,8 @@ import {
 import type {
   ActiveShift,
   MonthlySettlement,
+  PlanHistoryEntry,
+  PlanHistoryStatus,
   PlanInput,
   PlannedShift,
   RecordInput,
@@ -99,6 +105,7 @@ type SheetState =
     }
   | { kind: 'plan'; plan?: PlannedShift; date?: string }
   | { kind: 'rotation'; date?: string }
+  | { kind: 'missed' }
   | { kind: 'template'; template?: ShiftTemplate }
   | { kind: 'goal' }
   | { kind: 'startTiming' }
@@ -122,6 +129,7 @@ export default function App() {
   const [activeShift, setActiveShift] = useState<ActiveShift | null>(() => loadActiveShift());
   const [settlements, setSettlements] = useState<MonthlySettlement[]>(() => loadSettlements());
   const [plans, setPlans] = useState<PlannedShift[]>(() => loadPlans());
+  const [planHistory, setPlanHistory] = useState<PlanHistoryEntry[]>(() => loadPlanHistory());
   const [reminderStatus, setReminderStatus] = useState<ReminderStatus>(() =>
     initialReminderStatus(),
   );
@@ -206,6 +214,10 @@ export default function App() {
   useEffect(() => {
     savePlans(sortPlans(plans));
   }, [plans]);
+
+  useEffect(() => {
+    savePlanHistory(planHistory);
+  }, [planHistory]);
 
   useEffect(() => {
     let disposed = false;
@@ -327,6 +339,36 @@ export default function App() {
   );
 
   const closeSheet = useCallback(() => setSheet(null), []);
+  const archivePlan = useCallback(
+    (plan: PlannedShift, status: PlanHistoryStatus, recordId: string | null) => {
+      const entry = toPlanHistoryEntry(plan, status, recordId);
+      setPlans((prev) => prev.filter((item) => item.id !== plan.id));
+      setPlanHistory((prev) => [
+        ...prev.filter((item) => item.id !== entry.id),
+        entry,
+      ]);
+    },
+    [],
+  );
+
+  const requestSkipPlan = useCallback(
+    (plan: PlannedShift) => {
+      setConfirm({
+        title: `把「${plan.shiftName}」标记为未上？`,
+        message: `${formatDateCN(plan.date)} 的这一班不会生成记录，将计入未上班次。`,
+        confirmLabel: '标记未上',
+        danger: true,
+        onConfirm: () => {
+          archivePlan(plan, 'skipped', null);
+          setConfirm(null);
+          notify('已标记为未上');
+        },
+      });
+    },
+    [archivePlan, notify],
+  );
+
+  const openMissedPlans = () => setSheet({ kind: 'missed' });
 
   const openNewRecord = (template: ShiftTemplate | null, date = toISODate(new Date())) => {
     setSheet({ kind: 'record', template, date });
@@ -631,9 +673,13 @@ export default function App() {
       return;
     }
     const timestamp = Date.now();
+    const recordId = uid();
+    const sourcePlan = shift.sourcePlanId
+      ? plans.find((plan) => plan.id === shift.sourcePlanId)
+      : undefined;
     setRecords((prev) => [
       {
-        id: uid(),
+        id: recordId,
         date: shift.startDate,
         templateId: shift.templateId,
         shiftName: shift.shiftName,
@@ -649,12 +695,12 @@ export default function App() {
       },
       ...prev,
     ]);
-    if (shift.sourcePlanId) {
-      setPlans((prev) => prev.filter((plan) => plan.id !== shift.sourcePlanId));
+    if (sourcePlan) {
+      archivePlan(sourcePlan, 'completed', recordId);
     }
     setActiveShift(null);
     setSheet(null);
-    notify(shift.sourcePlanId ? '已结束打卡，排班转为记录' : '已结束打卡，记录已保存');
+    notify(sourcePlan ? '已结束打卡，排班已完成' : '已结束打卡，记录已保存');
   };
 
   const requestAbandonTiming = () => {
@@ -686,14 +732,15 @@ export default function App() {
       notify('记录已更新');
     } else {
       const now = Date.now();
+      const recordId = uid();
       setRecords((prev) => [
-        { ...input, id: uid(), createdAt: now, updatedAt: now },
+        { ...input, id: recordId, createdAt: now, updatedAt: now },
         ...prev,
       ]);
-      notify(sourcePlan ? '排班已转为记录' : '已记下一班');
-    }
-    if (sourcePlan) {
-      setPlans((prev) => prev.filter((plan) => plan.id !== sourcePlan.id));
+      if (sourcePlan) {
+        archivePlan(sourcePlan, 'completed', recordId);
+      }
+      notify(sourcePlan ? '排班已完成，记录已保存' : '已记下一班');
     }
     setSheet(null);
   };
@@ -733,13 +780,32 @@ export default function App() {
   const handleDeleteRecord = () => {
     if (!sheet || sheet.kind !== 'record' || !sheet.record) return;
     const target = sheet.record;
+    const linkedHistory = planHistory.find((entry) => entry.recordId === target.id);
     setRecords((prev) => prev.filter((record) => record.id !== target.id));
-    setSheet(null);
-    notifyWithAction('记录已删除', '撤销', () => {
-      setRecords((prev) =>
-        prev.some((record) => record.id === target.id) ? prev : [...prev, target],
+    if (linkedHistory) {
+      setPlanHistory((prev) => prev.filter((entry) => entry.id !== linkedHistory.id));
+      setPlans((prev) =>
+        sortPlans([...prev.filter((plan) => plan.id !== linkedHistory.id), restorePendingPlan(linkedHistory)]),
       );
-    });
+    }
+    setSheet(null);
+    notifyWithAction(
+      linkedHistory ? '记录已删除，排班已恢复' : '记录已删除',
+      '撤销',
+      () => {
+        setRecords((prev) =>
+          prev.some((record) => record.id === target.id) ? prev : [...prev, target],
+        );
+        if (linkedHistory) {
+          setPlans((prev) => prev.filter((plan) => plan.id !== linkedHistory.id));
+          setPlanHistory((prev) =>
+            prev.some((entry) => entry.id === linkedHistory.id)
+              ? prev
+              : [...prev, linkedHistory],
+          );
+        }
+      },
+    );
   };
 
   const handleExportJson = async () => {
@@ -752,6 +818,7 @@ export default function App() {
       },
       settlements,
       plans,
+      planHistory,
     );
     try {
       await exportFile(
@@ -790,13 +857,20 @@ export default function App() {
       const backup = parseBackup(await file.text());
       const settlementCount = backup.settlements?.length ?? 0;
       const planCount = backup.plans?.length ?? 0;
+      const historyCount = backup.planHistory?.length ?? 0;
       setConfirm({
         title: '导入并覆盖当前数据？',
         message: `备份包含 ${backup.records.length} 条记录、${backup.templates.length} 种班次${
           backup.preferences ? '、目标和外观设置' : ''
         }${settlementCount > 0 ? `、${settlementCount} 个月工资结算` : ''}${
           planCount > 0 ? `、${planCount} 个排班` : ''
-        }。导入后会替换当前数据${backup.plans ? '' : '（现有排班将保留）'}，且无法撤销。`,
+        }${historyCount > 0 ? `、${historyCount} 条完成排班历史` : ''}。导入后会替换记录、结算和完成历史${
+          backup.plans ? '' : '，现有排班将保留'
+        }${
+          !backup.planHistory && planHistory.length > 0
+            ? '（备份不含完成历史，现有完成历史将清空）'
+            : ''
+        }，且无法撤销。`,
         confirmLabel: '导入',
         danger: true,
         onConfirm: () => {
@@ -811,6 +885,7 @@ export default function App() {
           }
           setSettlements(backup.settlements ?? []);
           if (backup.plans) setPlans(backup.plans);
+          setPlanHistory(backup.planHistory ?? []);
           setConfirm(null);
           goToTab('home');
           notify('备份已导入');
@@ -827,13 +902,16 @@ export default function App() {
       plans.length > 0
         ? `班次设置和 ${plans.length} 个排班计划会保留`
         : '班次设置会保留';
+    const historyHint =
+      planHistory.length > 0 ? `和 ${planHistory.length} 条完成排班历史` : '';
     setConfirm({
       title: '清空所有记录？',
-      message: `将删除全部 ${records.length} 条记录，${keepHint}。此操作无法撤销，建议先导出备份。`,
+      message: `将删除全部 ${records.length} 条记录${historyHint}，${keepHint}。此操作无法撤销，建议先导出备份。`,
       confirmLabel: '清空',
       danger: true,
       onConfirm: () => {
         setRecords([]);
+        setPlanHistory([]);
         setConfirm(null);
         notify('记录已清空');
       },
@@ -869,6 +947,7 @@ export default function App() {
               onStartPlan={handleStartPlan}
               onRecordPlan={handleRecordPlan}
               onEditPlan={openPlan}
+              onOpenMissed={openMissedPlans}
               onClockOut={handleRequestEndTiming}
               onPauseTiming={handlePauseTiming}
               onResumeTiming={handleResumeTiming}
@@ -883,6 +962,7 @@ export default function App() {
               templates={templates}
               mode={calendarMode}
               timingActive={Boolean(activeShift)}
+              activePlanId={activeShift?.sourcePlanId ?? null}
               reminderEnabled={preferences.reminderEnabled}
               focusRequest={calendarFocus}
               onModeChange={setCalendarMode}
@@ -898,9 +978,13 @@ export default function App() {
           {tab === 'stats' ? (
             <Stats
               records={records}
+              plans={plans}
+              planHistory={planHistory}
+              activePlanId={activeShift?.sourcePlanId ?? null}
               monthlyGoal={preferences.monthlyGoal}
               settlements={settlements}
               onOpenSettlement={openSettlement}
+              onOpenMissed={openMissedPlans}
               initialPeriod={statsPeriod}
               onPeriodChange={setStatsPeriod}
             />
@@ -971,6 +1055,9 @@ export default function App() {
           plan={sheet.plan}
           initialDate={sheet.date}
           defaultTemplate={defaultTemplate}
+          reminderAvailable={reminderStatus.supported}
+          globalReminderEnabled={preferences.reminderEnabled}
+          globalReminderLeadMinutes={preferences.reminderLeadMinutes}
           onClose={closeSheet}
           onSave={handleSavePlan}
           onDelete={sheet.plan ? requestDeletePlan : undefined}
@@ -986,6 +1073,18 @@ export default function App() {
           initialDate={sheet.date}
           onClose={closeSheet}
           onGenerate={handleGenerateRotation}
+          escapeDisabled={Boolean(confirm)}
+        />
+      ) : null}
+
+      {sheet?.kind === 'missed' ? (
+        <MissedPlansSheet
+          plans={plans}
+          records={records}
+          activePlanId={activeShift?.sourcePlanId ?? null}
+          onClose={closeSheet}
+          onRecord={handleRecordPlan}
+          onSkip={requestSkipPlan}
           escapeDisabled={Boolean(confirm)}
         />
       ) : null}

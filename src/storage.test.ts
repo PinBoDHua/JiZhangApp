@@ -3,6 +3,7 @@ import { buildBackup, parseBackup } from './storage';
 import type {
   BackupPreferences,
   MonthlySettlement,
+  PlanHistoryEntry,
   PlannedShift,
   ShiftTemplate,
   WorkRecord,
@@ -63,6 +64,14 @@ const makePlan = (overrides: Partial<PlannedShift>): PlannedShift => ({
   ...overrides,
 });
 
+const makeHistoryEntry = (overrides: Partial<PlanHistoryEntry>): PlanHistoryEntry => ({
+  ...makePlan(overrides),
+  status: 'completed',
+  recordId: record.id,
+  completedAt: 2,
+  ...overrides,
+});
+
 describe('backup with shift plans', () => {
   it('exports plans sorted and parses them back', () => {
     const backup = buildBackup(
@@ -74,9 +83,17 @@ describe('backup with shift plans', () => {
         makePlan({ id: 'plan-late', date: '2026-10-26' }),
         makePlan({ id: 'plan-early', date: '2026-10-25' }),
       ],
+      [
+        makeHistoryEntry({ id: 'history-late', date: '2026-10-27' }),
+        makeHistoryEntry({ id: 'history-early', date: '2026-10-24' }),
+      ],
     );
 
     expect(backup.plans?.map((plan) => plan.id)).toEqual(['plan-early', 'plan-late']);
+    expect(backup.planHistory?.map((entry) => entry.id)).toEqual([
+      'history-early',
+      'history-late',
+    ]);
 
     const parsed = parseBackup(JSON.stringify(backup));
     expect(parsed.records).toHaveLength(1);
@@ -84,6 +101,11 @@ describe('backup with shift plans', () => {
     expect(parsed.preferences).toEqual(preferences);
     expect(parsed.settlements?.[0].monthKey).toBe('2026-10');
     expect(parsed.plans?.map((plan) => plan.date)).toEqual(['2026-10-25', '2026-10-26']);
+    expect(parsed.planHistory?.[0]).toMatchObject({
+      id: 'history-early',
+      status: 'completed',
+      recordId: record.id,
+    });
   });
 
   it('still accepts older backups without plans', () => {
@@ -97,6 +119,7 @@ describe('backup with shift plans', () => {
 
     const parsed = parseBackup(JSON.stringify(legacy));
     expect(parsed.plans).toBeUndefined();
+    expect(parsed.planHistory).toBeUndefined();
     expect(parsed.records).toHaveLength(1);
   });
 });

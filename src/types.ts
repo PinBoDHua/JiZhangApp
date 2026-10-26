@@ -54,9 +54,19 @@ export interface PlannedShift {
   note: string;
   createdAt: number;
   updatedAt: number;
+  reminderEnabled?: boolean;
+  reminderLeadMinutes?: number | null;
 }
 
 export type PlanInput = Omit<PlannedShift, 'id' | 'createdAt' | 'updatedAt'>;
+
+export type PlanHistoryStatus = 'completed' | 'skipped';
+
+export interface PlanHistoryEntry extends PlannedShift {
+  status: PlanHistoryStatus;
+  recordId: string | null;
+  completedAt: number;
+}
 
 export type SettlementAdjustmentKind = 'bonus' | 'deduction' | 'advance';
 
@@ -122,6 +132,7 @@ export interface BackupData {
   preferences?: BackupPreferences;
   settlements?: MonthlySettlement[];
   plans?: PlannedShift[];
+  planHistory?: PlanHistoryEntry[];
 }
 
 export const SHIFT_COLORS = [

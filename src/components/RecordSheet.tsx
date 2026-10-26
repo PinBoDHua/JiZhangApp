@@ -145,6 +145,7 @@ export function RecordSheet({
   });
   const overnight = isOvernight(draft.start, draft.end);
   const isCustom = draft.templateId === null;
+  const lockedToPlan = Boolean(plan && !record);
   const error = !draft.shiftName.trim()
     ? '请填写班次名称'
     : raw === 0
@@ -193,7 +194,7 @@ export function RecordSheet({
   const handleSave = () => {
     if (!valid) return;
     onSave({
-      date: draft.date,
+      date: lockedToPlan && plan ? plan.date : draft.date,
       templateId: draft.templateId,
       shiftName: draft.shiftName.trim(),
       shiftColor: draft.shiftColor,
@@ -256,45 +257,47 @@ export function RecordSheet({
       }
     >
       <div className="form">
-        <div className="field">
-          <span className="field-label">日期</span>
-          <div className="date-row">
-            <label className="date-input-wrap">
-              <CalendarIcon size={18} />
-              <input
-                type="date"
-                value={draft.date}
-                onChange={(event) => {
-                  if (event.target.value) patch({ date: event.target.value });
-                }}
-                aria-label="工作日期"
-              />
-            </label>
-            <div className="date-quick">
-              <button
-                type="button"
-                className={draft.date === today ? 'is-active' : ''}
-                onClick={() => patch({ date: today })}
-              >
-                今天
-              </button>
-              <button
-                type="button"
-                className={draft.date === yesterday ? 'is-active' : ''}
-                onClick={() => patch({ date: yesterday })}
-              >
-                昨天
-              </button>
+        {!lockedToPlan ? (
+          <div className="field">
+            <span className="field-label">日期</span>
+            <div className="date-row">
+              <label className="date-input-wrap">
+                <CalendarIcon size={18} />
+                <input
+                  type="date"
+                  value={draft.date}
+                  onChange={(event) => {
+                    if (event.target.value) patch({ date: event.target.value });
+                  }}
+                  aria-label="工作日期"
+                />
+              </label>
+              <div className="date-quick">
+                <button
+                  type="button"
+                  className={draft.date === today ? 'is-active' : ''}
+                  onClick={() => patch({ date: today })}
+                >
+                  今天
+                </button>
+                <button
+                  type="button"
+                  className={draft.date === yesterday ? 'is-active' : ''}
+                  onClick={() => patch({ date: yesterday })}
+                >
+                  昨天
+                </button>
+              </div>
             </div>
           </div>
-        </div>
+        ) : null}
 
         {!record && plan ? (
           <div className="plan-source-note">
             <CalendarIcon size={16} />
             <span>
               来自 {formatDateCN(plan.date)} 的排班
-              <small>保存后，这个排班会自动移除</small>
+              <small>保存后，这个排班会标记为已完成</small>
             </span>
           </div>
         ) : null}

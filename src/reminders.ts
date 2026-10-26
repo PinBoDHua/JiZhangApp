@@ -34,6 +34,7 @@ export function planStartMs(plan: PlannedShift): number {
 export interface ReminderCandidate {
   plan: PlannedShift;
   notifyAt: number;
+  leadMinutes: number;
 }
 
 export function buildReminderCandidates(
@@ -42,9 +43,20 @@ export function buildReminderCandidates(
   leadMinutes: number,
   limit = MAX_SCHEDULED_REMINDERS,
 ): ReminderCandidate[] {
-  const offset = Math.max(0, leadMinutes) * 60_000;
+  const fallbackLead = normalizeReminderLead(leadMinutes);
   return plans
-    .map((plan) => ({ plan, notifyAt: planStartMs(plan) - offset }))
+    .filter((plan) => plan.reminderEnabled !== false)
+    .map((plan) => {
+      const planLead =
+        typeof plan.reminderLeadMinutes === 'number'
+          ? normalizeReminderLead(plan.reminderLeadMinutes)
+          : fallbackLead;
+      return {
+        plan,
+        leadMinutes: planLead,
+        notifyAt: planStartMs(plan) - planLead * 60_000,
+      };
+    })
     .filter((candidate) => candidate.notifyAt > nowMs)
     .sort((a, b) => a.notifyAt - b.notifyAt)
     .slice(0, Math.max(0, limit));

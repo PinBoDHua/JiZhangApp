@@ -1,5 +1,6 @@
 import { useRef, useState, type TouchEvent as ReactTouchEvent } from 'react';
 import type { PlannedShift, ShiftTemplate, WorkRecord } from '../types';
+import { isPlanMissed } from '../planStats';
 import {
   canStartPlan,
   daysInMonth,
@@ -42,6 +43,7 @@ interface CalendarProps {
   templates: ShiftTemplate[];
   mode: CalendarMode;
   timingActive: boolean;
+  activePlanId: string | null;
   reminderEnabled: boolean;
   focusRequest?: { date: string; token: number } | null;
   onModeChange: (mode: CalendarMode) => void;
@@ -80,6 +82,7 @@ interface PlanRowProps {
   plan: PlannedShift;
   current: Date;
   timingActive: boolean;
+  activePlanId: string | null;
   reminderEnabled: boolean;
   onEdit: (plan: PlannedShift) => void;
   onStart: (plan: PlannedShift) => void;
@@ -90,6 +93,7 @@ function PlanRow({
   plan,
   current,
   timingActive,
+  activePlanId,
   reminderEnabled,
   onEdit,
   onStart,
@@ -100,7 +104,9 @@ function PlanRow({
   const startable = !past && canStartPlan(plan, current);
   const minutes = workedMinutes(plan.start, plan.end, plan.breakMinutes);
   const earnings = earningsOf(plan);
-  const reminder = reminderEnabled && !past;
+  const reminder = reminderEnabled && plan.reminderEnabled !== false && !past;
+  const missed = isPlanMissed(plan, current, activePlanId);
+  const isActivePlan = activePlanId === plan.id;
 
   return (
     <div className={`plan-row${past ? ' is-past' : ''}`}>
@@ -120,7 +126,11 @@ function PlanRow({
         <span className="plan-row-info">
           <span className="plan-row-title">
             <span className="plan-row-name">{plan.shiftName}</span>
-            {past ? (
+            {isActivePlan ? (
+              <span className="plan-badge is-timing">计时中</span>
+            ) : missed ? (
+              <span className="plan-badge is-missed">待补记</span>
+            ) : past ? (
               <span className="plan-badge">已过</span>
             ) : plan.date === today ? (
               <span className="plan-badge is-today">今天</span>
@@ -170,6 +180,7 @@ export function Calendar({
   templates,
   mode,
   timingActive,
+  activePlanId,
   reminderEnabled,
   focusRequest,
   onModeChange,
@@ -533,6 +544,7 @@ export function Calendar({
                 plan={plan}
                 current={current}
                 timingActive={timingActive}
+                activePlanId={activePlanId}
                 reminderEnabled={reminderEnabled}
                 onEdit={onEditPlan}
                 onStart={onStartPlan}

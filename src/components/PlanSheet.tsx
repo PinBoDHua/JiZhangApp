@@ -18,6 +18,7 @@ import {
   todayISO,
   workedMinutes,
 } from '../utils';
+import { REMINDER_LEAD_OPTIONS } from '../reminders';
 import { BottomSheet } from './BottomSheet';
 import { CalendarIcon, MoonIcon } from './Icons';
 import { MultiplierOptions } from './MultiplierOptions';
@@ -33,6 +34,8 @@ interface Draft {
   rate: number;
   multiplier: number;
   note: string;
+  reminderEnabled: boolean;
+  reminderLeadMinutes: number | null;
 }
 
 interface PlanSheetProps {
@@ -40,6 +43,9 @@ interface PlanSheetProps {
   plan?: PlannedShift;
   initialDate?: string;
   defaultTemplate: ShiftTemplate | null;
+  reminderAvailable: boolean;
+  globalReminderEnabled: boolean;
+  globalReminderLeadMinutes: number;
   onClose: () => void;
   onSave: (input: PlanInput, dates: string[]) => void;
   onDelete?: () => void;
@@ -74,6 +80,8 @@ function createDraft(
       rate: plan.rate,
       multiplier: plan.multiplier,
       note: plan.note,
+      reminderEnabled: plan.reminderEnabled !== false,
+      reminderLeadMinutes: plan.reminderLeadMinutes ?? null,
     };
   }
   const date = initialDate ?? todayISO();
@@ -89,6 +97,8 @@ function createDraft(
       rate: template.rate,
       multiplier: 1,
       note: '',
+      reminderEnabled: true,
+      reminderLeadMinutes: null,
     };
   }
   return {
@@ -102,6 +112,8 @@ function createDraft(
     rate: templates[0]?.rate ?? 20,
     multiplier: 1,
     note: '',
+    reminderEnabled: true,
+    reminderLeadMinutes: null,
   };
 }
 
@@ -110,6 +122,9 @@ export function PlanSheet({
   plan,
   initialDate,
   defaultTemplate,
+  reminderAvailable,
+  globalReminderEnabled,
+  globalReminderLeadMinutes,
   onClose,
   onSave,
   onDelete,
@@ -131,6 +146,9 @@ export function PlanSheet({
   });
   const overnight = isOvernight(draft.start, draft.end);
   const isCustom = draft.templateId === null;
+  const globalLeadLabel =
+    REMINDER_LEAD_OPTIONS.find((option) => option.minutes === globalReminderLeadMinutes)?.label ??
+    `${globalReminderLeadMinutes} 分钟`;
   const dates = plan ? [draft.date] : repeatDatesISO(draft.date, repeatWeeks);
   const lastDate = dates.at(-1) ?? draft.date;
   const error = !draft.shiftName.trim()
@@ -174,6 +192,8 @@ export function PlanSheet({
         rate: Math.max(0, draft.rate),
         multiplier: draft.multiplier,
         note: draft.note.trim(),
+        reminderEnabled: draft.reminderEnabled,
+        reminderLeadMinutes: draft.reminderLeadMinutes,
       },
       dates,
     );
@@ -433,6 +453,61 @@ export function PlanSheet({
             onChange={(multiplier) => patch({ multiplier })}
           />
         </div>
+
+        {reminderAvailable ? (
+          <div className="field">
+            <div className="plan-reminder-head">
+              <span className="field-label">
+                排班提醒
+                <small className="field-label-note">
+                  {globalReminderEnabled ? `默认提前 ${globalLeadLabel}` : '系统提醒未开启'}
+                </small>
+              </span>
+              <button
+                type="button"
+                role="switch"
+                aria-checked={draft.reminderEnabled}
+                aria-label="这个排班提醒"
+                className={`switch${draft.reminderEnabled ? ' is-on' : ''}`}
+                onClick={() => patch({ reminderEnabled: !draft.reminderEnabled })}
+              >
+                <span aria-hidden="true" />
+              </button>
+            </div>
+            {draft.reminderEnabled ? (
+              <div className="plan-reminder-lead" role="group" aria-label="提前提醒时间">
+                <button
+                  type="button"
+                  className={`choice-chip${
+                    draft.reminderLeadMinutes === null ? ' is-active' : ''
+                  }`}
+                  onClick={() => patch({ reminderLeadMinutes: null })}
+                  aria-pressed={draft.reminderLeadMinutes === null}
+                >
+                  跟随全局
+                </button>
+                {REMINDER_LEAD_OPTIONS.map((option) => (
+                  <button
+                    key={option.minutes}
+                    type="button"
+                    className={`choice-chip${
+                      draft.reminderLeadMinutes === option.minutes ? ' is-active' : ''
+                    }`}
+                    onClick={() => patch({ reminderLeadMinutes: option.minutes })}
+                    aria-pressed={draft.reminderLeadMinutes === option.minutes}
+                  >
+                    {option.label}
+                  </button>
+                ))}
+              </div>
+            ) : (
+              <p className="field-hint">这个排班不会发送系统通知。</p>
+            )}
+            {!globalReminderEnabled ? (
+              <p className="field-hint">系统提醒总开关未开启，可在设置中开启。</p>
+            ) : null}
+          </div>
+        ) : null}
 
         <div className="field">
           <span className="field-label">备注</span>

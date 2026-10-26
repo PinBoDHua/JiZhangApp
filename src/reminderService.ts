@@ -117,7 +117,7 @@ async function performSync(
           const content = buildReminderContent(
             candidate.plan,
             candidate.notifyAt,
-            leadMinutes,
+            candidate.leadMinutes,
           );
           return {
             id: reminderIdForPlan(candidate.plan.id),

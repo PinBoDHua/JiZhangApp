@@ -1,5 +1,13 @@
 import { useState, type CSSProperties } from 'react';
-import type { MonthlySettlement, SettlementOpenContext, StatsPeriod, WorkRecord } from '../types';
+import { buildPlanReconciliation } from '../planStats';
+import type {
+  MonthlySettlement,
+  PlanHistoryEntry,
+  PlannedShift,
+  SettlementOpenContext,
+  StatsPeriod,
+  WorkRecord,
+} from '../types';
 import {
   addDaysISO,
   daysInMonth,
@@ -21,15 +29,19 @@ import {
   toISODate,
 } from '../utils';
 import { RangeSwitcher } from './RangeSwitcher';
-import { TargetIcon } from './Icons';
+import { ChevronRightIcon, TargetIcon } from './Icons';
 import { SettlementCard } from './SettlementCard';
 import { useClock } from '../useClock';
 
 interface StatsProps {
   records: WorkRecord[];
+  plans: PlannedShift[];
+  planHistory: PlanHistoryEntry[];
+  activePlanId: string | null;
   monthlyGoal: number;
   settlements: MonthlySettlement[];
   onOpenSettlement: (context: SettlementOpenContext) => void;
+  onOpenMissed: () => void;
   initialPeriod?: StatsPeriod;
   onPeriodChange?: (period: StatsPeriod) => void;
 }
@@ -52,9 +64,13 @@ const PERIOD_OPTIONS: { value: StatsPeriod; label: string }[] = [
 
 export function Stats({
   records,
+  plans,
+  planHistory,
+  activePlanId,
   monthlyGoal,
   settlements,
   onOpenSettlement,
+  onOpenMissed,
   initialPeriod = 'month',
   onPeriodChange,
 }: StatsProps) {
@@ -210,6 +226,40 @@ export function Stats({
       : undefined;
   const showSettlement =
     period === 'month' && (summary.shifts > 0 || Boolean(monthSettlement));
+  const planReconciliation =
+    period === 'month'
+      ? buildPlanReconciliation({
+          plans,
+          history: planHistory,
+          records,
+          monthPrefix: settlementMonthKey,
+          now: current,
+          activePlanId,
+        })
+      : null;
+  const planRatePercent =
+    planReconciliation?.completionRate !== null && planReconciliation?.completionRate !== undefined
+      ? Math.round(planReconciliation.completionRate * 100)
+      : null;
+  const planDiffClass =
+    planReconciliation && planReconciliation.diffEarnings > 0
+      ? 'is-up'
+      : planReconciliation && planReconciliation.diffEarnings < 0
+        ? 'is-down'
+        : 'is-even';
+  const formattedDiffShifts = planReconciliation
+    ? `${planReconciliation.diffShifts > 0 ? '+' : ''}${planReconciliation.diffShifts}`
+    : '';
+  const formattedDiffMinutes = planReconciliation
+    ? `${planReconciliation.diffMinutes > 0 ? '+' : planReconciliation.diffMinutes < 0 ? '-' : ''}${formatDuration(
+        Math.abs(planReconciliation.diffMinutes),
+      )}`
+    : '';
+  const formattedDiffEarnings = planReconciliation
+    ? `${planReconciliation.diffEarnings > 0 ? '+' : planReconciliation.diffEarnings < 0 ? '-' : ''}¥${formatMoney(
+        Math.abs(planReconciliation.diffEarnings),
+      )}`
+    : '';
 
   const changePeriod = (next: StatsPeriod) => {
     if (next === period) return;
@@ -353,6 +403,73 @@ export function Stats({
             已完成 {goalPercent}% ·{' '}
             {goalRemaining > 0 ? `还差 ¥${formatMoney(goalRemaining)}` : '目标已达成'}
           </p>
+        </section>
+      ) : null}
+
+      {planReconciliation && planReconciliation.totalPlans > 0 ? (
+        <section className="panel plan-reconcile-panel" aria-label="排班对账">
+          <div className="panel-head">
+            <div>
+              <h2>排班对账</h2>
+              <p>已到期计划与实际记录</p>
+            </div>
+            <div className="plan-reconcile-rate">
+              <span>完成率</span>
+              <strong>{planRatePercent !== null ? `${planRatePercent}%` : '—'}</strong>
+            </div>
+          </div>
+          <div className="plan-reconcile-bar" aria-hidden="true">
+            <span style={{ width: `${planRatePercent ?? 0}%` }} />
+          </div>
+          <div className="plan-reconcile-counts">
+            <span>
+              <strong>{planReconciliation.completed}</strong> 已完成
+            </span>
+            <span>
+              <strong>{planReconciliation.skipped}</strong> 未上
+            </span>
+            <span className={planReconciliation.missed > 0 ? 'is-warning' : ''}>
+              <strong>{planReconciliation.missed}</strong> 待补记
+            </span>
+            <span>
+              <strong>{planReconciliation.upcoming}</strong> 待上
+            </span>
+          </div>
+          {planReconciliation.due > 0 ? (
+            <div className="plan-reconcile-compare">
+              <div className="plan-reconcile-compare-item">
+                <span>已到期计划</span>
+                <strong>{planReconciliation.due} 班</strong>
+                <small>
+                  {formatDuration(planReconciliation.plannedDueMinutes)} · ¥
+                  {formatMoney(planReconciliation.plannedDueEarnings)}
+                </small>
+              </div>
+              <div className="plan-reconcile-compare-item">
+                <span>实际记录</span>
+                <strong>{planReconciliation.actualShifts} 班</strong>
+                <small>
+                  {formatDuration(planReconciliation.actualMinutes)} · ¥
+                  {formatMoney(planReconciliation.actualEarnings)}
+                </small>
+              </div>
+              <div className={`plan-reconcile-compare-item ${planDiffClass}`}>
+                <span>差额</span>
+                <strong>{formattedDiffShifts} 班</strong>
+                <small>
+                  {formattedDiffMinutes} · {formattedDiffEarnings}
+                </small>
+              </div>
+            </div>
+          ) : (
+            <p className="plan-reconcile-empty">本月还没有已到期的排班。</p>
+          )}
+          {planReconciliation.missed > 0 ? (
+            <button type="button" className="plan-reconcile-action" onClick={onOpenMissed}>
+              <span>去处理 {planReconciliation.missed} 个待补记排班</span>
+              <ChevronRightIcon size={15} />
+            </button>
+          ) : null}
         </section>
       ) : null}
 

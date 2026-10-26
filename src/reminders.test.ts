@@ -50,6 +50,36 @@ describe('buildReminderCandidates', () => {
     );
     expect(buildReminderCandidates(plans, now, 60, 3)).toHaveLength(3);
   });
+
+  it('supports per-plan lead time and opt-out', () => {
+    const customLead = makePlan({
+      id: 'custom-lead',
+      date: '2026-10-26',
+      reminderLeadMinutes: 30,
+    });
+    const disabled = makePlan({
+      id: 'disabled',
+      date: '2026-10-26',
+      reminderEnabled: false,
+    });
+    const followGlobal = makePlan({
+      id: 'follow-global',
+      date: '2026-10-27',
+      reminderLeadMinutes: null,
+    });
+    const candidates = buildReminderCandidates(
+      [customLead, disabled, followGlobal],
+      now,
+      120,
+    );
+    expect(candidates.map((candidate) => candidate.plan.id)).toEqual([
+      'custom-lead',
+      'follow-global',
+    ]);
+    expect(candidates[0].leadMinutes).toBe(30);
+    expect(candidates[0].notifyAt).toBe(planStartMs(customLead) - 30 * 60_000);
+    expect(candidates[1].leadMinutes).toBe(120);
+  });
 });
 
 describe('reminder content', () => {

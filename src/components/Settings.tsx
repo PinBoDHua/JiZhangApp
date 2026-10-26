@@ -230,7 +230,7 @@ export function Settings({
         <div className="settings-heading">
           <div>
             <h2>排班提醒</h2>
-            <p>到点前提醒，不错过要上的班</p>
+            <p>到点前提醒；单个排班可单独调整</p>
           </div>
         </div>
         <div className="settings-group">
@@ -401,7 +401,7 @@ export function Settings({
             ? '所有记录都保存在这台设备上，不会上传服务器。卸载 App 或清除应用数据前，请先导出备份。'
             : '所有记录保存在当前浏览器中，不会上传服务器。更换设备、清理浏览器数据前，记得先导出备份。'}
         </p>
-        <span className="about-version">工时账本 · v1.7.0</span>
+        <span className="about-version">工时账本 · v1.8.0</span>
       </section>
     </div>
   );
