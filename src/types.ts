@@ -1,3 +1,14 @@
+/**
+ * 分段计薪规则：一个班次里，标准工时以内的时长按班次倍数计薪，
+ * 超出的部分按加班倍数计薪。旧记录没有这个字段时按整班单倍数计算。
+ */
+export interface OvertimeRule {
+  /** 每日标准工时（分钟），超出部分视为加班 */
+  standardMinutes: number;
+  /** 加班时段倍数，需大于 1 才会生效 */
+  multiplier: number;
+}
+
 export interface ShiftTemplate {
   id: string;
   name: string;
@@ -6,6 +17,8 @@ export interface ShiftTemplate {
   end: string;
   breakMinutes: number;
   rate: number;
+  /** 新建记录/排班时默认带出的加班规则 */
+  overtime?: OvertimeRule | null;
 }
 
 export interface WorkRecord {
@@ -20,6 +33,7 @@ export interface WorkRecord {
   rate: number;
   multiplier: number;
   note: string;
+  overtime?: OvertimeRule | null;
   createdAt: number;
   updatedAt: number;
 }
@@ -38,6 +52,7 @@ export interface ActiveShift {
   rate: number;
   multiplier: number;
   note: string;
+  overtime?: OvertimeRule | null;
 }
 
 export interface PlannedShift {
@@ -52,6 +67,7 @@ export interface PlannedShift {
   rate: number;
   multiplier: number;
   note: string;
+  overtime?: OvertimeRule | null;
   createdAt: number;
   updatedAt: number;
   reminderEnabled?: boolean;
@@ -95,6 +111,8 @@ export interface SettlementOpenContext {
   baseEarnings: number;
   baseMinutes: number;
   workedDays: number;
+  overtimeMinutes: number;
+  overtimeEarnings: number;
 }
 
 export type RecordInput = Omit<WorkRecord, 'id' | 'createdAt' | 'updatedAt'>;
@@ -121,11 +139,15 @@ export const DEFAULT_PREFERENCES: AppPreferences = {
   reminderLeadMinutes: 60,
 };
 
-export type BackupPreferences = Pick<AppPreferences, 'monthlyGoal' | 'theme'>;
+export type BackupPreferences = Pick<AppPreferences, 'monthlyGoal' | 'theme'> & {
+  reminderEnabled?: boolean;
+  reminderLeadMinutes?: number;
+};
 
 export interface BackupData {
   app: 'shift-ledger';
-  version: 1;
+  version: 2;
+  appVersion?: string;
   exportedAt: string;
   templates: ShiftTemplate[];
   records: WorkRecord[];

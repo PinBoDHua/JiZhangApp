@@ -1,10 +1,11 @@
 import type { WorkRecord } from '../types';
 import {
   formatDuration,
+  formatHours,
   formatMoney,
   isOvernight,
   recordEarnings,
-  recordMinutes,
+  recordPay,
 } from '../utils';
 import { MoonIcon } from './Icons';
 
@@ -14,7 +15,8 @@ interface RecordRowProps {
 }
 
 export function RecordRow({ record, onClick }: RecordRowProps) {
-  const minutes = recordMinutes(record);
+  const pay = recordPay(record);
+  const minutes = pay.minutes;
   const overnight = isOvernight(record.start, record.end);
 
   return (
@@ -40,6 +42,11 @@ export function RecordRow({ record, onClick }: RecordRowProps) {
           ) : null}
           {record.multiplier !== 1 ? (
             <span className="mini-tag is-accent">×{record.multiplier}</span>
+          ) : null}
+          {pay.overtimeMinutes > 0 ? (
+            <span className="mini-tag is-overtime">
+              加班 {formatHours(pay.overtimeMinutes)}h
+            </span>
           ) : null}
         </span>
         <span className="record-sub">

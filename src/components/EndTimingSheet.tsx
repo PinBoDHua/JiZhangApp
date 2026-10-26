@@ -1,9 +1,11 @@
 import { useState } from 'react';
-import type { ActiveShift } from '../types';
+import type { ActiveShift, OvertimeRule } from '../types';
+import { computePay } from '../pay';
 import {
   activePauseMs,
   formatDateCN,
   formatDuration,
+  formatHours,
   formatMoney,
   isOvernight,
   rawMinutes,
@@ -11,12 +13,13 @@ import {
 import { BottomSheet } from './BottomSheet';
 import { MoonIcon } from './Icons';
 import { NumberInput } from './NumberInput';
-import { MultiplierField } from './ShiftFormFields';
+import { MultiplierField, OvertimeField } from './ShiftFormFields';
 
 interface EndTimingInput {
   breakMinutes: number;
   multiplier: number;
   note: string;
+  overtime: OvertimeRule | null;
 }
 
 interface EndTimingSheetProps {
@@ -43,16 +46,29 @@ export function EndTimingSheet({
   const [breakMinutes, setBreakMinutes] = useState(() => Math.min(suggestedBreak, maxBreak));
   const [multiplier, setMultiplier] = useState(shift.multiplier);
   const [note, setNote] = useState(shift.note);
+  const [overtime, setOvertime] = useState<OvertimeRule | null>(shift.overtime ?? null);
 
   const workedMinutes = Math.max(0, totalMinutes - breakMinutes);
-  const earnings =
-    Math.round((workedMinutes / 60) * shift.rate * multiplier * 100) / 100;
+  const pay = computePay({
+    minutes: workedMinutes,
+    rate: shift.rate,
+    multiplier,
+    overtime,
+  });
+  const earnings = pay.total;
   const valid = totalMinutes > 0 && breakMinutes >= 0 && breakMinutes < totalMinutes && multiplier > 0;
   const overnight = isOvernight(shift.startTime, endTime);
 
   const updateBreak = (next: number) => {
     const value = Number.isFinite(next) ? Math.round(next) : 0;
     setBreakMinutes(Math.min(Math.max(0, value), maxBreak));
+  };
+
+  const changeMultiplier = (next: number) => {
+    setMultiplier(next);
+    setOvertime((prev) =>
+      prev ? { ...prev, multiplier: Math.max(prev.multiplier, next) } : prev,
+    );
   };
 
   return (
@@ -75,6 +91,9 @@ export function EndTimingSheet({
             <span className="pay-preview-meta">
               净工时 {formatDuration(workedMinutes)} · ¥{shift.rate}/时
               {multiplier !== 1 ? ` × ${multiplier}` : ''}
+              {pay.overtimeMinutes > 0
+                ? ` · 加班 ${formatHours(pay.overtimeMinutes)}h`
+                : ''}
             </span>
           </div>
           <button
@@ -85,6 +104,7 @@ export function EndTimingSheet({
                 breakMinutes,
                 multiplier,
                 note: note.trim(),
+                overtime,
               })
             }
             disabled={!valid}
@@ -154,7 +174,15 @@ export function EndTimingSheet({
           <p className="field-hint">如有带薪休息，可以把这里调小。</p>
         </div>
 
-        <MultiplierField value={multiplier} onChange={setMultiplier} note="本次结算使用" />
+        <MultiplierField value={multiplier} onChange={changeMultiplier} note="本次结算使用" />
+
+        <OvertimeField
+          value={overtime}
+          onChange={setOvertime}
+          minutes={workedMinutes}
+          rate={shift.rate}
+          multiplier={multiplier}
+        />
 
         <div className="field">
           <span className="field-label">备注</span>

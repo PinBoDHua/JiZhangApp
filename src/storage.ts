@@ -11,25 +11,48 @@ import {
   type ShiftTemplate,
   type WorkRecord,
 } from './types';
+import { isValidOvertimeRule } from './pay';
 import { normalizeReminderLead } from './reminders';
 import { sortPlans, sortRecords } from './utils';
 
-const RECORDS_KEY = 'shift-ledger.records.v1';
-const TEMPLATES_KEY = 'shift-ledger.templates.v1';
-const PREFERENCES_KEY = 'shift-ledger.preferences.v1';
-const ACTIVE_SHIFT_KEY = 'shift-ledger.active-shift.v1';
-const SETTLEMENTS_KEY = 'shift-ledger.settlements.v1';
-const PLANS_KEY = 'shift-ledger.plans.v1';
-const PLAN_HISTORY_KEY = 'shift-ledger.plan-history.v1';
+/**
+ * 2.0 数据架构：
+ * - 所有集合写入 v2 键；
+ * - 首次启动把 1.x 的 v1 键原样复制过来，旧键保留只读，升级不丢数据；
+ * - meta 记录迁移版本，后续版本可以在此基础上继续升级。
+ */
+export const SCHEMA_VERSION = 2;
+
+const META_KEY = 'shift-ledger.meta.v2';
+const RECORDS_KEY = 'shift-ledger.records.v2';
+const TEMPLATES_KEY = 'shift-ledger.templates.v2';
+const PREFERENCES_KEY = 'shift-ledger.preferences.v2';
+const ACTIVE_SHIFT_KEY = 'shift-ledger.active-shift.v2';
+const SETTLEMENTS_KEY = 'shift-ledger.settlements.v2';
+const PLANS_KEY = 'shift-ledger.plans.v2';
+const PLAN_HISTORY_KEY = 'shift-ledger.plan-history.v2';
+
+const LEGACY_RECORDS_KEY = 'shift-ledger.records.v1';
+const LEGACY_TEMPLATES_KEY = 'shift-ledger.templates.v1';
+const LEGACY_PREFERENCES_KEY = 'shift-ledger.preferences.v1';
+const LEGACY_ACTIVE_SHIFT_KEY = 'shift-ledger.active-shift.v1';
+const LEGACY_SETTLEMENTS_KEY = 'shift-ledger.settlements.v1';
+const LEGACY_PLANS_KEY = 'shift-ledger.plans.v1';
+const LEGACY_PLAN_HISTORY_KEY = 'shift-ledger.plan-history.v1';
+
+const KEY_PAIRS: readonly (readonly [string, string])[] = [
+  [RECORDS_KEY, LEGACY_RECORDS_KEY],
+  [TEMPLATES_KEY, LEGACY_TEMPLATES_KEY],
+  [PREFERENCES_KEY, LEGACY_PREFERENCES_KEY],
+  [ACTIVE_SHIFT_KEY, LEGACY_ACTIVE_SHIFT_KEY],
+  [SETTLEMENTS_KEY, LEGACY_SETTLEMENTS_KEY],
+  [PLANS_KEY, LEGACY_PLANS_KEY],
+  [PLAN_HISTORY_KEY, LEGACY_PLAN_HISTORY_KEY],
+];
 
 const ALL_KEYS = [
-  RECORDS_KEY,
-  TEMPLATES_KEY,
-  PREFERENCES_KEY,
-  ACTIVE_SHIFT_KEY,
-  SETTLEMENTS_KEY,
-  PLANS_KEY,
-  PLAN_HISTORY_KEY,
+  META_KEY,
+  ...KEY_PAIRS.flatMap(([key, legacy]) => [key, legacy]),
 ];
 
 export const STORAGE_ERROR_EVENT = 'shift-ledger:storage-error';
@@ -39,9 +62,55 @@ export interface StorageErrorDetail {
   message: string;
 }
 
-function readJson<T>(key: string, fallback: T): T {
+export interface StorageMeta {
+  schemaVersion: number;
+  migratedFrom: number | null;
+  migratedAt: number;
+}
+
+/**
+ * 幂等迁移：只复制缺失的 v2 键，不覆盖已有数据；meta 写入失败时下次继续尝试。
+ * 返回 null 表示当前环境无法访问 localStorage。
+ */
+export function migrateStorage(): StorageMeta | null {
   try {
-    const raw = localStorage.getItem(key);
+    const rawMeta = localStorage.getItem(META_KEY);
+    if (rawMeta) {
+      const parsed = JSON.parse(rawMeta) as Partial<StorageMeta> | null;
+      if (parsed && parsed.schemaVersion === SCHEMA_VERSION) {
+        return {
+          schemaVersion: SCHEMA_VERSION,
+          migratedFrom:
+            typeof parsed.migratedFrom === 'number' ? parsed.migratedFrom : null,
+          migratedAt: typeof parsed.migratedAt === 'number' ? parsed.migratedAt : 0,
+        };
+      }
+    }
+    let copied = 0;
+    KEY_PAIRS.forEach(([key, legacyKey]) => {
+      if (localStorage.getItem(key) === null) {
+        const legacy = localStorage.getItem(legacyKey);
+        if (legacy !== null) {
+          localStorage.setItem(key, legacy);
+          copied += 1;
+        }
+      }
+    });
+    const meta: StorageMeta = {
+      schemaVersion: SCHEMA_VERSION,
+      migratedFrom: copied > 0 ? 1 : null,
+      migratedAt: Date.now(),
+    };
+    localStorage.setItem(META_KEY, JSON.stringify(meta));
+    return meta;
+  } catch {
+    return null;
+  }
+}
+
+function readJson<T>(key: string, legacyKey: string, fallback: T): T {
+  try {
+    const raw = localStorage.getItem(key) ?? localStorage.getItem(legacyKey);
     if (!raw) return fallback;
     return JSON.parse(raw) as T;
   } catch {
@@ -71,6 +140,7 @@ function writeJson(key: string, value: unknown): void {
 
 /**
  * 原样导出本机数据，供异常兜底或排查使用：不经过任何校验，坏数据也能拿走。
+ * 同时包含 v2 与旧版 v1 键，迁移前后都可排查。
  */
 export function readRawStorageSnapshot(): Record<string, string> {
   const dump: Record<string, string> = {};
@@ -107,6 +177,10 @@ function isFiniteNumber(value: unknown, min?: number): value is number {
   return typeof value === 'number' && Number.isFinite(value) && (min === undefined || value >= min);
 }
 
+function isOptionalOvertime(value: unknown): boolean {
+  return value === undefined || value === null || isValidOvertimeRule(value);
+}
+
 function isShiftTemplate(value: unknown): value is ShiftTemplate {
   if (!value || typeof value !== 'object') return false;
   const item = value as Record<string, unknown>;
@@ -117,7 +191,8 @@ function isShiftTemplate(value: unknown): value is ShiftTemplate {
     isTimeHM(item.start) &&
     isTimeHM(item.end) &&
     isFiniteNumber(item.breakMinutes, 0) &&
-    isFiniteNumber(item.rate, 0)
+    isFiniteNumber(item.rate, 0) &&
+    isOptionalOvertime(item.overtime)
   );
 }
 
@@ -136,13 +211,15 @@ function isWorkRecord(value: unknown): value is WorkRecord {
     isFiniteNumber(item.multiplier) &&
     item.multiplier > 0 &&
     typeof item.note === 'string' &&
+    isOptionalOvertime(item.overtime) &&
     typeof item.createdAt === 'number' &&
     typeof item.updatedAt === 'number'
   );
 }
 
 export function loadRecords(): WorkRecord[] {
-  const records = readJson<unknown>(RECORDS_KEY, []);
+  migrateStorage();
+  const records = readJson<unknown>(RECORDS_KEY, LEGACY_RECORDS_KEY, []);
   if (!Array.isArray(records)) return [];
   return records.filter(isWorkRecord);
 }
@@ -152,7 +229,8 @@ export function saveRecords(records: WorkRecord[]): void {
 }
 
 export function loadTemplates(): ShiftTemplate[] {
-  const templates = readJson<unknown>(TEMPLATES_KEY, DEFAULT_TEMPLATES);
+  migrateStorage();
+  const templates = readJson<unknown>(TEMPLATES_KEY, LEGACY_TEMPLATES_KEY, DEFAULT_TEMPLATES);
   if (!Array.isArray(templates)) return DEFAULT_TEMPLATES.map((template) => ({ ...template }));
   return templates.filter(isShiftTemplate).map((template) => ({ ...template }));
 }
@@ -161,18 +239,39 @@ export function saveTemplates(templates: ShiftTemplate[]): void {
   writeJson(TEMPLATES_KEY, templates);
 }
 
-function isBackupPreferences(value: unknown): value is BackupPreferences {
-  if (!value || typeof value !== 'object') return false;
+/** 兼容 1.x 备份：早期只保存目标与主题；2.0 起额外保存提醒设置。 */
+function normalizeBackupPreferences(value: unknown): BackupPreferences | undefined {
+  if (!value || typeof value !== 'object') return undefined;
   const item = value as Record<string, unknown>;
-  return (
-    typeof item.monthlyGoal === 'number' &&
-    item.monthlyGoal >= 0 &&
-    (item.theme === 'system' || item.theme === 'light' || item.theme === 'dark')
-  );
+  if (
+    typeof item.monthlyGoal !== 'number' ||
+    !Number.isFinite(item.monthlyGoal) ||
+    item.monthlyGoal < 0
+  ) {
+    return undefined;
+  }
+  if (item.theme !== 'system' && item.theme !== 'light' && item.theme !== 'dark') {
+    return undefined;
+  }
+  const preferences: BackupPreferences = {
+    monthlyGoal: item.monthlyGoal,
+    theme: item.theme,
+  };
+  if (typeof item.reminderEnabled === 'boolean') {
+    preferences.reminderEnabled = item.reminderEnabled;
+  }
+  if (
+    typeof item.reminderLeadMinutes === 'number' &&
+    Number.isFinite(item.reminderLeadMinutes)
+  ) {
+    preferences.reminderLeadMinutes = normalizeReminderLead(item.reminderLeadMinutes);
+  }
+  return preferences;
 }
 
 export function loadPreferences(): AppPreferences {
-  const stored = readJson<unknown>(PREFERENCES_KEY, DEFAULT_PREFERENCES);
+  migrateStorage();
+  const stored = readJson<unknown>(PREFERENCES_KEY, LEGACY_PREFERENCES_KEY, DEFAULT_PREFERENCES);
   if (!stored || typeof stored !== 'object') return { ...DEFAULT_PREFERENCES };
   const item = stored as Record<string, unknown>;
   return {
@@ -219,12 +318,14 @@ function isActiveShift(value: unknown): value is ActiveShift {
     isFiniteNumber(item.rate, 0) &&
     isFiniteNumber(item.multiplier) &&
     item.multiplier > 0 &&
-    typeof item.note === 'string'
+    typeof item.note === 'string' &&
+    isOptionalOvertime(item.overtime)
   );
 }
 
 export function loadActiveShift(): ActiveShift | null {
-  const stored = readJson<unknown>(ACTIVE_SHIFT_KEY, null);
+  migrateStorage();
+  const stored = readJson<unknown>(ACTIVE_SHIFT_KEY, LEGACY_ACTIVE_SHIFT_KEY, null);
   if (!isActiveShift(stored)) return null;
   if (!stored || typeof stored !== 'object') return null;
   const item = stored as ActiveShift & Record<string, unknown>;
@@ -244,6 +345,8 @@ export function saveActiveShift(shift: ActiveShift | null): void {
   }
   try {
     localStorage.removeItem(ACTIVE_SHIFT_KEY);
+    // 迁移后的旧键只读，但进行中的计时是临时数据：不清掉会在下次启动被读回来
+    localStorage.removeItem(LEGACY_ACTIVE_SHIFT_KEY);
   } catch (error) {
     reportStorageError(ACTIVE_SHIFT_KEY, error);
   }
@@ -280,7 +383,8 @@ function isMonthlySettlement(value: unknown): value is MonthlySettlement {
 }
 
 export function loadSettlements(): MonthlySettlement[] {
-  const stored = readJson<unknown>(SETTLEMENTS_KEY, []);
+  migrateStorage();
+  const stored = readJson<unknown>(SETTLEMENTS_KEY, LEGACY_SETTLEMENTS_KEY, []);
   if (!Array.isArray(stored)) return [];
   const map = new Map<string, MonthlySettlement>();
   stored.filter(isMonthlySettlement).forEach((settlement) => {
@@ -312,6 +416,7 @@ function isPlannedShift(value: unknown): value is PlannedShift {
     isFiniteNumber(item.multiplier) &&
     item.multiplier > 0 &&
     typeof item.note === 'string' &&
+    isOptionalOvertime(item.overtime) &&
     typeof item.createdAt === 'number' &&
     typeof item.updatedAt === 'number' &&
     (item.reminderEnabled === undefined || typeof item.reminderEnabled === 'boolean') &&
@@ -341,7 +446,8 @@ function sortPlanHistory(history: PlanHistoryEntry[]): PlanHistoryEntry[] {
 }
 
 export function loadPlans(): PlannedShift[] {
-  const stored = readJson<unknown>(PLANS_KEY, []);
+  migrateStorage();
+  const stored = readJson<unknown>(PLANS_KEY, LEGACY_PLANS_KEY, []);
   if (!Array.isArray(stored)) return [];
   const map = new Map<string, PlannedShift>();
   stored.filter(isPlannedShift).forEach((plan) => map.set(plan.id, plan));
@@ -353,7 +459,8 @@ export function savePlans(plans: PlannedShift[]): void {
 }
 
 export function loadPlanHistory(): PlanHistoryEntry[] {
-  const stored = readJson<unknown>(PLAN_HISTORY_KEY, []);
+  migrateStorage();
+  const stored = readJson<unknown>(PLAN_HISTORY_KEY, LEGACY_PLAN_HISTORY_KEY, []);
   if (!Array.isArray(stored)) return [];
   const map = new Map<string, PlanHistoryEntry>();
   stored.filter(isPlanHistoryEntry).forEach((entry) => {
@@ -410,6 +517,10 @@ function dedupeSettlements(rows: MonthlySettlement[]): MonthlySettlement[] {
   return Array.from(map.values()).sort((a, b) => a.monthKey.localeCompare(b.monthKey));
 }
 
+/**
+ * 读取 1.x（version 1）与 2.0（version 2）备份，统一返回 v2 结构。
+ * 2.0 备份多出应用版本与提醒设置，旧备份导入时保持现有提醒设置不变。
+ */
 export function parseBackup(text: string): BackupData {
   let data: unknown;
   try {
@@ -419,7 +530,7 @@ export function parseBackup(text: string): BackupData {
   }
   if (!data || typeof data !== 'object') throw new Error('备份内容不完整');
   const backup = data as Record<string, unknown>;
-  if (backup.app !== 'shift-ledger' || backup.version !== 1) {
+  if (backup.app !== 'shift-ledger' || (backup.version !== 1 && backup.version !== 2)) {
     throw new Error('不是工时账本的备份文件');
   }
   if (!Array.isArray(backup.records) || !Array.isArray(backup.templates)) {
@@ -436,31 +547,45 @@ export function parseBackup(text: string): BackupData {
   const planHistory = Array.isArray(backup.planHistory)
     ? dedupePlanHistory(collectValid(backup.planHistory, isPlanHistoryEntry, '完成排班历史'))
     : undefined;
+  const preferences = normalizeBackupPreferences(backup.preferences);
   return {
     app: 'shift-ledger',
-    version: 1,
+    version: 2,
+    ...(typeof backup.appVersion === 'string' ? { appVersion: backup.appVersion } : {}),
     exportedAt:
       typeof backup.exportedAt === 'string' ? backup.exportedAt : new Date().toISOString(),
     templates,
     records,
-    ...(isBackupPreferences(backup.preferences) ? { preferences: backup.preferences } : {}),
+    ...(preferences ? { preferences } : {}),
     ...(settlements ? { settlements } : {}),
     ...(plans ? { plans } : {}),
     ...(planHistory ? { planHistory } : {}),
   };
 }
 
-export function buildBackup(
-  records: WorkRecord[],
-  templates: ShiftTemplate[],
-  preferences: BackupPreferences,
-  settlements: MonthlySettlement[],
-  plans: PlannedShift[],
-  planHistory: PlanHistoryEntry[],
-): BackupData {
+export interface BackupInput {
+  records: WorkRecord[];
+  templates: ShiftTemplate[];
+  preferences: BackupPreferences;
+  settlements: MonthlySettlement[];
+  plans: PlannedShift[];
+  planHistory: PlanHistoryEntry[];
+  appVersion?: string;
+}
+
+export function buildBackup({
+  records,
+  templates,
+  preferences,
+  settlements,
+  plans,
+  planHistory,
+  appVersion,
+}: BackupInput): BackupData {
   return {
     app: 'shift-ledger',
-    version: 1,
+    version: 2,
+    ...(appVersion ? { appVersion } : {}),
     exportedAt: new Date().toISOString(),
     templates,
     records: sortRecords(records),

@@ -1,5 +1,6 @@
 import { useState, type CSSProperties } from 'react';
 import { buildPlanReconciliation } from '../planStats';
+import { buildMonthForecast } from '../forecast';
 import type {
   MonthlySettlement,
   PlanHistoryEntry,
@@ -29,6 +30,8 @@ import {
   toISODate,
 } from '../utils';
 import { RangeSwitcher } from './RangeSwitcher';
+import { ForecastCard } from './ForecastCard';
+import { YearReview } from './YearReview';
 import { ChevronRightIcon, TargetIcon } from './Icons';
 import { SettlementCard } from './SettlementCard';
 import { useClock } from '../useClock';
@@ -42,6 +45,7 @@ interface StatsProps {
   settlements: MonthlySettlement[];
   onOpenSettlement: (context: SettlementOpenContext) => void;
   onOpenMissed: () => void;
+  onExportAnnualReport?: (text: string, year: number) => void;
   initialPeriod?: StatsPeriod;
   onPeriodChange?: (period: StatsPeriod) => void;
 }
@@ -71,6 +75,7 @@ export function Stats({
   settlements,
   onOpenSettlement,
   onOpenMissed,
+  onExportAnnualReport,
   initialPeriod = 'month',
   onPeriodChange,
 }: StatsProps) {
@@ -226,6 +231,17 @@ export function Stats({
       : undefined;
   const showSettlement =
     period === 'month' && (summary.shifts > 0 || Boolean(monthSettlement));
+  const monthForecast =
+    period === 'month'
+      ? buildMonthForecast({
+          records,
+          plans,
+          monthPrefix: settlementMonthKey,
+          now: current,
+          goal: monthlyGoal,
+        })
+      : null;
+  const showForecast = monthForecast !== null && monthForecast.upcomingPlans > 0;
   const planReconciliation =
     period === 'month'
       ? buildPlanReconciliation({
@@ -368,6 +384,15 @@ export function Stats({
           <span>出勤 {summary.days} 天</span>
           <span className="dot-divider" aria-hidden="true" />
           <span>合计 {formatDuration(summary.minutes)}</span>
+          {summary.overtimeMinutes > 0 ? (
+            <>
+              <span className="dot-divider" aria-hidden="true" />
+              <span className="is-overtime">
+                加班 {formatHours(summary.overtimeMinutes)}h · ¥
+                {formatMoney(summary.overtimeEarnings)}
+              </span>
+            </>
+          ) : null}
         </div>
       </section>
 
@@ -405,6 +430,13 @@ export function Stats({
             {goalRemaining > 0 ? `还差 ¥${formatMoney(goalRemaining)}` : '目标已达成'}
           </p>
         </section>
+      ) : null}
+
+      {showForecast && monthForecast ? (
+        <ForecastCard
+          forecast={monthForecast}
+          monthLabel={monthLabel(monthAnchor.year, monthAnchor.monthIndex)}
+        />
       ) : null}
 
       {planReconciliation && planReconciliation.totalPlans > 0 ? (
@@ -486,6 +518,8 @@ export function Stats({
               baseEarnings: summary.earnings,
               baseMinutes: summary.minutes,
               workedDays: summary.days,
+              overtimeMinutes: summary.overtimeMinutes,
+              overtimeEarnings: summary.overtimeEarnings,
             })
           }
         />
@@ -536,6 +570,14 @@ export function Stats({
           <span className="chart-focus-meta">{activeMeta}</span>
         </div>
       </section>
+
+      {period === 'year' && onExportAnnualReport ? (
+        <YearReview
+          year={yearAnchor}
+          records={records}
+          onExport={onExportAnnualReport}
+        />
+      ) : null}
 
       <section className="panel breakdown-panel">
         <div className="panel-head">

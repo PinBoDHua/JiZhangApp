@@ -1,6 +1,18 @@
-import { describe, expect, it } from 'vitest';
-import { buildBackup, isISODate, isTimeHM, parseBackup } from './storage';
+import { afterEach, beforeEach, describe, expect, it } from 'vitest';
+import {
+  buildBackup,
+  isISODate,
+  isTimeHM,
+  loadPreferences,
+  loadRecords,
+  loadActiveShift,
+  migrateStorage,
+  parseBackup,
+  saveRecords,
+  saveActiveShift,
+} from './storage';
 import type {
+  ActiveShift,
   BackupPreferences,
   MonthlySettlement,
   PlanHistoryEntry,
@@ -74,21 +86,22 @@ const makeHistoryEntry = (overrides: Partial<PlanHistoryEntry>): PlanHistoryEntr
 
 describe('backup with shift plans', () => {
   it('exports plans sorted and parses them back', () => {
-    const backup = buildBackup(
-      [record],
-      [template],
+    const backup = buildBackup({
+      records: [record],
+      templates: [template],
       preferences,
-      [settlement],
-      [
+      settlements: [settlement],
+      plans: [
         makePlan({ id: 'plan-late', date: '2026-10-26' }),
         makePlan({ id: 'plan-early', date: '2026-10-25' }),
       ],
-      [
+      planHistory: [
         makeHistoryEntry({ id: 'history-late', date: '2026-10-27' }),
         makeHistoryEntry({ id: 'history-early', date: '2026-10-24' }),
       ],
-    );
+    });
 
+    expect(backup.version).toBe(2);
     expect(backup.plans?.map((plan) => plan.id)).toEqual(['plan-early', 'plan-late']);
     expect(backup.planHistory?.map((entry) => entry.id)).toEqual([
       'history-early',
@@ -118,6 +131,7 @@ describe('backup with shift plans', () => {
     };
 
     const parsed = parseBackup(JSON.stringify(legacy));
+    expect(parsed.version).toBe(2);
     expect(parsed.plans).toBeUndefined();
     expect(parsed.planHistory).toBeUndefined();
     expect(parsed.records).toHaveLength(1);
@@ -230,5 +244,171 @@ describe('backup with shift plans', () => {
     expect(parsed.plans?.[0].note).toBe('新');
     expect(parsed.settlements).toHaveLength(1);
     expect(parsed.settlements?.[0].note).toBe('新');
+  });
+});
+
+describe('backup v2', () => {
+  const overtime = { standardMinutes: 8 * 60, multiplier: 1.5 };
+
+  it('keeps overtime rules, app version and reminder preferences', () => {
+    const fullPreferences: BackupPreferences = {
+      monthlyGoal: 5000,
+      theme: 'dark',
+      reminderEnabled: true,
+      reminderLeadMinutes: 30,
+    };
+    const backup = buildBackup({
+      records: [{ ...record, overtime }],
+      templates: [{ ...template, overtime }],
+      preferences: fullPreferences,
+      settlements: [],
+      plans: [makePlan({ overtime })],
+      planHistory: [],
+      appVersion: '2.0.0',
+    });
+
+    const parsed = parseBackup(JSON.stringify(backup));
+    expect(parsed.version).toBe(2);
+    expect(parsed.appVersion).toBe('2.0.0');
+    expect(parsed.templates[0].overtime).toEqual(overtime);
+    expect(parsed.records[0].overtime).toEqual(overtime);
+    expect(parsed.plans?.[0].overtime).toEqual(overtime);
+    expect(parsed.preferences).toEqual(fullPreferences);
+  });
+
+  it('rejects invalid overtime rules instead of silently changing pay', () => {
+    const broken = {
+      app: 'shift-ledger',
+      version: 2,
+      exportedAt: '2026-10-25T00:00:00.000Z',
+      templates: [template],
+      records: [{ ...record, overtime: { standardMinutes: 0, multiplier: 1.5 } }],
+    };
+    expect(() => parseBackup(JSON.stringify(broken))).toThrow(
+      '备份中有无法识别的记录',
+    );
+  });
+
+  it('drops a malformed preferences block but keeps the rest importable', () => {
+    const backup = {
+      app: 'shift-ledger',
+      version: 2,
+      exportedAt: '2026-10-25T00:00:00.000Z',
+      templates: [template],
+      records: [record],
+      preferences: { monthlyGoal: '5000', theme: 'dark' },
+    };
+    const parsed = parseBackup(JSON.stringify(backup));
+    expect(parsed.preferences).toBeUndefined();
+    expect(parsed.records).toHaveLength(1);
+  });
+});
+
+describe('storage v1 -> v2 migration', () => {
+  const globalScope = globalThis as { localStorage?: Storage };
+  const originalStorage = globalScope.localStorage;
+  let store: Map<string, string>;
+
+  const fakeStorage = {
+    getItem: (key: string) => store.get(key) ?? null,
+    setItem: (key: string, value: string) => {
+      store.set(key, value);
+    },
+    removeItem: (key: string) => {
+      store.delete(key);
+    },
+    clear: () => store.clear(),
+    key: (index: number) => Array.from(store.keys())[index] ?? null,
+    get length() {
+      return store.size;
+    },
+  } as Storage;
+
+  beforeEach(() => {
+    store = new Map();
+    globalScope.localStorage = fakeStorage;
+  });
+
+  afterEach(() => {
+    if (originalStorage) {
+      globalScope.localStorage = originalStorage;
+    } else {
+      Reflect.deleteProperty(globalThis, 'localStorage');
+    }
+  });
+
+  it('copies v1 data to v2, keeps the old keys and reads it back', () => {
+    store.set('shift-ledger.records.v1', JSON.stringify([record]));
+    store.set('shift-ledger.templates.v1', JSON.stringify([template]));
+    store.set(
+      'shift-ledger.preferences.v1',
+      JSON.stringify({
+        monthlyGoal: 3000,
+        theme: 'dark',
+        lastBackupAt: 123,
+        reminderEnabled: true,
+        reminderLeadMinutes: 30,
+      }),
+    );
+
+    const meta = migrateStorage();
+    expect(meta?.schemaVersion).toBe(2);
+    expect(store.get('shift-ledger.meta.v2')).toContain('"schemaVersion":2');
+    expect(store.get('shift-ledger.records.v2')).toBe(
+      store.get('shift-ledger.records.v1'),
+    );
+    expect(store.get('shift-ledger.records.v1')).not.toBeUndefined();
+    expect(loadRecords()).toHaveLength(1);
+    expect(loadPreferences()).toMatchObject({
+      monthlyGoal: 3000,
+      theme: 'dark',
+      reminderEnabled: true,
+      reminderLeadMinutes: 30,
+    });
+  });
+
+  it('never overwrites existing v2 data, even on later runs', () => {
+    store.set('shift-ledger.records.v1', JSON.stringify([record]));
+    store.set('shift-ledger.records.v2', JSON.stringify([]));
+    migrateStorage();
+    expect(loadRecords()).toEqual([]);
+
+    store.set('shift-ledger.records.v1', JSON.stringify([record, record]));
+    store.set('shift-ledger.meta.v2', JSON.stringify({ schemaVersion: 2 }));
+    migrateStorage();
+    expect(loadRecords()).toEqual([]);
+  });
+
+  it('writes new changes to v2 and keeps v1 untouched', () => {
+    store.set('shift-ledger.records.v1', JSON.stringify([]));
+    migrateStorage();
+    saveRecords([record]);
+    expect(JSON.parse(store.get('shift-ledger.records.v2') ?? '[]')).toHaveLength(1);
+    expect(store.get('shift-ledger.records.v1')).toBe('[]');
+  });
+
+  it('does not resurrect an abandoned timing shift from the legacy key', () => {
+    const active: ActiveShift = {
+      templateId: template.id,
+      sourcePlanId: null,
+      shiftName: template.name,
+      shiftColor: template.color,
+      startDate: '2026-10-26',
+      startTime: '08:00',
+      startedAt: 1,
+      pausedAt: null,
+      pausedMs: 0,
+      breakMinutes: 60,
+      rate: 20,
+      multiplier: 1,
+      note: '',
+    };
+    store.set('shift-ledger.active-shift.v1', JSON.stringify(active));
+    migrateStorage();
+    expect(loadActiveShift()).toMatchObject({ shiftName: template.name });
+
+    saveActiveShift(null);
+    expect(store.get('shift-ledger.active-shift.v1')).toBeUndefined();
+    expect(loadActiveShift()).toBeNull();
   });
 });

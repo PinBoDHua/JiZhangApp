@@ -44,6 +44,8 @@ interface SettlementSheetProps {
   baseEarnings: number;
   baseMinutes: number;
   workedDays: number;
+  overtimeMinutes?: number;
+  overtimeEarnings?: number;
   settlement?: MonthlySettlement;
   onClose: () => void;
   onSave: (input: SettlementInput) => void;
@@ -56,6 +58,8 @@ export function SettlementSheet({
   baseEarnings,
   baseMinutes,
   workedDays,
+  overtimeMinutes = 0,
+  overtimeEarnings = 0,
   settlement,
   onClose,
   onSave,
@@ -108,6 +112,8 @@ export function SettlementSheet({
         paidAt: status === 'paid' ? paidAt || today : null,
         paidAmount: status === 'paid' ? parsedPaidAmount : null,
         note,
+        overtimeMinutes,
+        overtimeEarnings,
       }),
     );
   };
@@ -170,6 +176,9 @@ export function SettlementSheet({
           </div>
           <span className="settlement-sheet-summary-sub">
             出勤 {workedDays} 天 · {formatDuration(baseMinutes)}
+            {overtimeMinutes > 0
+              ? ` · 加班 ${formatDuration(overtimeMinutes)} ¥${formatMoney(overtimeEarnings)}`
+              : ''}
           </span>
           <div className="settlement-sheet-totals">
             {totals.bonus > 0 ? (

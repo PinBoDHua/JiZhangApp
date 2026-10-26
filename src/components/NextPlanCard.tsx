@@ -3,11 +3,12 @@ import type { PlannedShift } from '../types';
 import {
   addDaysISO,
   canStartPlan,
-  earningsOf,
   formatDateCN,
   formatDuration,
+  formatHours,
   formatMoney,
   parseISODate,
+  planPay,
   toISODate,
   workedMinutes,
 } from '../utils';
@@ -50,7 +51,8 @@ export function NextPlanCard({
   const isToday = plan.date === toISODate(now);
   const startable = canStartPlan(plan, now);
   const minutes = workedMinutes(plan.start, plan.end, plan.breakMinutes);
-  const earnings = earningsOf(plan);
+  const pay = planPay(plan);
+  const earnings = pay.total;
 
   return (
     <section
@@ -101,6 +103,11 @@ export function NextPlanCard({
           </p>
           <p className="next-plan-money">
             预计 <strong>¥{formatMoney(earnings)}</strong>
+            {pay.overtimeMinutes > 0 ? (
+              <span className="next-plan-overtime">
+                含加班 {formatHours(pay.overtimeMinutes)}h
+              </span>
+            ) : null}
             {plan.note ? <span className="next-plan-note">{plan.note}</span> : null}
           </p>
         </div>

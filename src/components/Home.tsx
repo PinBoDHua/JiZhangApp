@@ -1,5 +1,6 @@
-﻿import { useState, type CSSProperties } from 'react';
+import { useState, type CSSProperties } from 'react';
 import { findMissedPlans } from '../planStats';
+import { buildMonthForecast } from '../forecast';
 import type { ActiveShift, PlannedShift, ShiftTemplate, WorkRecord } from '../types';
 import {
   addDaysISO,
@@ -12,6 +13,7 @@ import {
   getWeekRange,
   groupByDate,
   isPlanPast,
+  monthKey,
   recordEarnings,
   recordMinutes,
   recordsInMonth,
@@ -108,6 +110,13 @@ export function Home({
   const totalMinutes = monthRecords.reduce((sum, record) => sum + recordMinutes(record), 0);
   const totalEarnings = monthRecords.reduce((sum, record) => sum + recordEarnings(record), 0);
   const workedDays = new Set(monthRecords.map((record) => record.date)).size;
+  const monthForecast = buildMonthForecast({
+    records,
+    plans,
+    monthPrefix: monthKey(now.getFullYear(), now.getMonth()),
+    now,
+    goal: monthlyGoal,
+  });
 
   const normalizedQuery = query.trim().toLowerCase();
   const filteredRecords = normalizedQuery
@@ -123,6 +132,15 @@ export function Home({
   const showSearch = records.length > 5 || normalizedQuery.length > 0;
   const goalPercent = monthlyGoal > 0 ? Math.round((totalEarnings / monthlyGoal) * 100) : 0;
   const goalDone = monthlyGoal > 0 && totalEarnings >= monthlyGoal;
+  const projectedGoalPercent =
+    monthlyGoal > 0 ? Math.round((monthForecast.projectedEarnings / monthlyGoal) * 100) : 0;
+  const projectedGoalDone =
+    monthlyGoal > 0 && monthForecast.projectedEarnings >= monthlyGoal;
+  const goalRecordedWidth = Math.min(100, Math.max(0, goalPercent));
+  const goalProjectedWidth = Math.min(
+    100 - goalRecordedWidth,
+    Math.max(0, projectedGoalPercent - goalPercent),
+  );
 
   const today = toISODate(now);
   const missedPlans = findMissedPlans(
@@ -275,19 +293,44 @@ export function Home({
             </strong>
           </div>
         </div>
+        {monthForecast.upcomingPlans > 0 ? (
+          <div className="hero-forecast">
+            <span>
+              待上 {monthForecast.upcomingPlans} 班 · 预计月末
+            </span>
+            <strong>
+              <small>¥</small>
+              {formatMoney(monthForecast.projectedEarnings)}
+            </strong>
+          </div>
+        ) : null}
         {monthlyGoal > 0 ? (
-          <div className={`hero-goal${goalDone ? ' is-done' : ''}`}>
+          <div
+            className={`hero-goal${goalDone ? ' is-done' : ''}${
+              !goalDone && projectedGoalDone ? ' is-projected' : ''
+            }`}
+          >
             <div className="hero-goal-head">
               <span>月收入目标 ¥{formatMoney(monthlyGoal)}</span>
               <strong>{goalPercent}%</strong>
             </div>
             <div className="hero-goal-bar" aria-hidden="true">
-              <span style={{ width: `${Math.min(100, goalPercent)}%` }} />
+              <span style={{ width: `${goalRecordedWidth}%` }} />
+              {goalProjectedWidth > 0 ? (
+                <i
+                  style={{
+                    left: `${goalRecordedWidth}%`,
+                    width: `${goalProjectedWidth}%`,
+                  }}
+                />
+              ) : null}
             </div>
             <p>
               {goalDone
                 ? `已超出目标 ¥${formatMoney(totalEarnings - monthlyGoal)}`
-                : `还差 ¥${formatMoney(monthlyGoal - totalEarnings)} 达成`}
+                : projectedGoalDone
+                  ? `还差 ¥${formatMoney(monthlyGoal - totalEarnings)}，按排班预计可达标`
+                  : `还差 ¥${formatMoney(monthlyGoal - totalEarnings)} 达成`}
             </p>
           </div>
         ) : null}

@@ -30,6 +30,7 @@ import { buildBackup, parseBackup, STORAGE_ERROR_EVENT } from './storage';
 import type {
   ActiveShift,
   MonthlySettlement,
+  OvertimeRule,
   PlanHistoryStatus,
   PlanInput,
   PlannedShift,
@@ -288,6 +289,21 @@ export default function App() {
     }
   };
 
+  const handleShareAnnualReport = async (text: string, year: number) => {
+    try {
+      await exportFile(
+        `工时账本-${year}年度复盘.txt`,
+        text,
+        'text/plain;charset=utf-8',
+        '保存或分享年度复盘',
+      );
+      notify(Capacitor.isNativePlatform() ? '年度报告已生成' : '年度报告已导出');
+    } catch (error) {
+      if (/cancel/i.test(error instanceof Error ? error.message : String(error))) return;
+      notify('年度报告导出失败，请重试');
+    }
+  };
+
   const handleSaveGoal = (goal: number) => {
     setPreferences((prev) => ({ ...prev, monthlyGoal: goal }));
     setSheet(null);
@@ -389,6 +405,7 @@ export default function App() {
         rate: entry.template.rate,
         multiplier: 1,
         note: '',
+        overtime: entry.template.overtime ?? null,
         createdAt: timestamp,
         updatedAt: timestamp,
       }));
@@ -449,6 +466,7 @@ export default function App() {
       rate: plan.rate,
       multiplier: plan.multiplier,
       note: plan.note,
+      overtime: plan.overtime ?? null,
     });
     setSheet(null);
     notify(`${plan.shiftName} 打卡已开始`);
@@ -479,6 +497,7 @@ export default function App() {
       rate: template.rate,
       multiplier: 1,
       note: '',
+      overtime: template.overtime ?? null,
     });
     setSheet(null);
     notify('打卡已开始');
@@ -531,6 +550,7 @@ export default function App() {
     breakMinutes: number;
     multiplier: number;
     note: string;
+    overtime: OvertimeRule | null;
   }) => {
     if (sheet?.kind !== 'endTiming') return;
     const { shift, endTime } = sheet;
@@ -557,6 +577,7 @@ export default function App() {
         rate: shift.rate,
         multiplier: input.multiplier,
         note: input.note,
+        overtime: input.overtime,
         createdAt: timestamp,
         updatedAt: timestamp,
       },
@@ -676,17 +697,20 @@ export default function App() {
   };
 
   const handleExportJson = async () => {
-    const backup = buildBackup(
+    const backup = buildBackup({
       records,
       templates,
-      {
+      preferences: {
         monthlyGoal: preferences.monthlyGoal,
         theme: preferences.theme,
+        reminderEnabled: preferences.reminderEnabled,
+        reminderLeadMinutes: preferences.reminderLeadMinutes,
       },
       settlements,
       plans,
       planHistory,
-    );
+      appVersion: __APP_VERSION__,
+    });
     try {
       await exportFile(
         `工时账本-备份-${todayISO()}.json`,
@@ -730,7 +754,7 @@ export default function App() {
       setConfirm({
         title: '导入并覆盖当前数据？',
         message: `备份包含 ${backup.records.length} 条记录、${backup.templates.length} 种班次${
-          backup.preferences ? '、目标和外观设置' : ''
+          backup.preferences ? '、偏好设置' : ''
         }${settlementCount > 0 ? `、${settlementCount} 个月工资结算` : ''}${
           planCount > 0 ? `、${planCount} 个排班` : ''
         }${historyCount > 0 ? `、${historyCount} 条完成排班历史` : ''}。导入后会替换记录、结算和完成历史${
@@ -754,10 +778,17 @@ export default function App() {
           setRecords(backup.records);
           setTemplates(backup.templates);
           if (backup.preferences) {
+            const imported = backup.preferences;
             setPreferences((prev) => ({
               ...prev,
-              monthlyGoal: backup.preferences?.monthlyGoal ?? prev.monthlyGoal,
-              theme: backup.preferences?.theme ?? prev.theme,
+              monthlyGoal: imported.monthlyGoal ?? prev.monthlyGoal,
+              theme: imported.theme ?? prev.theme,
+              ...(imported.reminderEnabled !== undefined
+                ? { reminderEnabled: imported.reminderEnabled }
+                : {}),
+              ...(imported.reminderLeadMinutes !== undefined
+                ? { reminderLeadMinutes: imported.reminderLeadMinutes }
+                : {}),
             }));
           }
           setSettlements(backup.settlements ?? []);
@@ -864,6 +895,7 @@ export default function App() {
               settlements={settlements}
               onOpenSettlement={openSettlement}
               onOpenMissed={openMissedPlans}
+              onExportAnnualReport={handleShareAnnualReport}
               initialPeriod={statsPeriod}
               onPeriodChange={setStatsPeriod}
             />
@@ -1015,6 +1047,8 @@ export default function App() {
           baseEarnings={sheet.context.baseEarnings}
           baseMinutes={sheet.context.baseMinutes}
           workedDays={sheet.context.workedDays}
+          overtimeMinutes={sheet.context.overtimeMinutes}
+          overtimeEarnings={sheet.context.overtimeEarnings}
           settlement={sheet.settlement}
           onClose={closeSheet}
           onSave={handleSaveSettlement}

@@ -1,4 +1,5 @@
 import type { ActiveShift } from '../types';
+import { computePay } from '../pay';
 import {
   activePauseMs,
   activeWorkedMinutes,
@@ -32,8 +33,12 @@ export function ActiveTimingCard({
   const suggestedBreak = pauseMinutes > 0 ? pauseMinutes : shift.breakMinutes;
   const breakMinutes = Math.min(suggestedBreak, Math.max(0, wallMinutes - 1));
   const paidMinutes = Math.max(0, wallMinutes - breakMinutes);
-  const estimate =
-    Math.round((paidMinutes / 60) * shift.rate * shift.multiplier * 100) / 100;
+  const estimate = computePay({
+    minutes: paidMinutes,
+    rate: shift.rate,
+    multiplier: shift.multiplier,
+    overtime: shift.overtime,
+  }).total;
 
   return (
     <section

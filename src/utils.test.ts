@@ -17,6 +17,7 @@ import {
   settlementTotals,
   sortPlans,
   summarizeRecords,
+  toCsv,
   workedMinutes,
 } from './utils';
 import type {
@@ -255,6 +256,26 @@ describe('record summaries', () => {
     expect(summary.days).toBe(2);
     expect(summary.shifts).toBe(2);
     expect(summary.averageRate).toBeCloseTo(490 / 19);
+    expect(summary.regularMinutes).toBe(1140);
+    expect(summary.overtimeMinutes).toBe(0);
+    expect(summary.overtimeEarnings).toBe(0);
+  });
+
+  it('separates overtime hours and pay in summaries', () => {
+    const longDay = makeRecord({
+      start: '08:00',
+      end: '20:00',
+      breakMinutes: 60,
+      rate: 20,
+      overtime: { standardMinutes: 8 * 60, multiplier: 1.5 },
+    });
+    const summary = summarizeRecords([longDay]);
+    expect(summary.minutes).toBe(660);
+    expect(summary.regularMinutes).toBe(480);
+    expect(summary.overtimeMinutes).toBe(180);
+    expect(summary.regularMinutes + summary.overtimeMinutes).toBe(summary.minutes);
+    expect(summary.earnings).toBe(250);
+    expect(summary.overtimeEarnings).toBe(90);
   });
 
   it('handles an empty period', () => {
@@ -264,7 +285,33 @@ describe('record summaries', () => {
       days: 0,
       shifts: 0,
       averageRate: 0,
+      regularMinutes: 0,
+      overtimeMinutes: 0,
+      overtimeEarnings: 0,
     });
+  });
+});
+
+describe('CSV export', () => {
+  it('includes regular and overtime columns', () => {
+    const csv = toCsv([
+      makeRecord({
+        start: '08:00',
+        end: '19:00',
+        breakMinutes: 60,
+        rate: 20,
+        overtime: { standardMinutes: 8 * 60, multiplier: 1.5 },
+        note: '加班',
+      }),
+    ]);
+    const [header, row] = csv.split('\r\n');
+    expect(header).toContain('"加班工时(小时)"');
+    expect(header).toContain('"加班倍数"');
+    expect(row).toContain('"8.00"');
+    expect(row).toContain('"2.00"');
+    expect(row).toContain('"1.5"');
+    expect(row).toContain('"220.00"');
+    expect(row).toContain('"加班"');
   });
 });
 
@@ -326,5 +373,26 @@ describe('settlement totals and payslips', () => {
     expect(text).toContain('应发：¥1,000');
     expect(text).toContain('状态：待到账');
     expect(text).not.toContain('实发：');
+  });
+
+  it('adds an overtime line to payslips when the month has overtime', () => {
+    const totals = settlementTotals(2500, []);
+    const text = buildPayslipText({
+      monthLabel: '2026年10月',
+      minutes: 7200,
+      days: 15,
+      baseEarnings: 2500,
+      adjustments: [],
+      totals,
+      status: 'pending',
+      paidAt: null,
+      paidAmount: null,
+      note: '',
+      overtimeMinutes: 300,
+      overtimeEarnings: 150,
+    });
+    expect(text).toContain('工时收入：¥2,500');
+    expect(text).toContain('其中加班：5 小时 · ¥150');
+    expect(text).toContain('应发：¥2,500');
   });
 });

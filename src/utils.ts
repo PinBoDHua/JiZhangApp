@@ -1,10 +1,12 @@
 import type {
   ActiveShift,
+  OvertimeRule,
   PlannedShift,
   SettlementAdjustment,
   SettlementStatus,
   WorkRecord,
 } from './types';
+import { computePay, type PayBreakdown } from './pay';
 
 const WEEKDAYS = ['周日', '周一', '周二', '周三', '周四', '周五', '周六'];
 
@@ -147,19 +149,42 @@ export function workedMinutes(
   return Math.max(0, total - rest);
 }
 
-export function earningsOf(input: {
+export interface ShiftPayInput {
   start: string;
   end: string;
   breakMinutes: number;
   rate: number;
   multiplier: number;
-}): number {
-  const hours = workedMinutes(input.start, input.end, input.breakMinutes) / 60;
-  return Math.round(hours * input.rate * input.multiplier * 100) / 100;
+  overtime?: OvertimeRule | null;
+}
+
+/**
+ * 时间 + 时薪 + 规则 → 完整计薪明细。所有页面都从这里取数，
+ * 避免记录、排班、工资条各自重复一套算法。
+ */
+export function shiftPay(input: ShiftPayInput): PayBreakdown {
+  return computePay({
+    minutes: workedMinutes(input.start, input.end, input.breakMinutes),
+    rate: input.rate,
+    multiplier: input.multiplier,
+    overtime: input.overtime,
+  });
+}
+
+export function earningsOf(input: ShiftPayInput): number {
+  return shiftPay(input).total;
+}
+
+export function recordPay(record: WorkRecord): PayBreakdown {
+  return shiftPay(record);
+}
+
+export function planPay(plan: PlannedShift): PayBreakdown {
+  return shiftPay(plan);
 }
 
 export function recordEarnings(record: WorkRecord): number {
-  return earningsOf(record);
+  return recordPay(record).total;
 }
 
 export function recordMinutes(record: WorkRecord): number {
@@ -195,6 +220,8 @@ export function formatMoney(value: number): string {
   if (rounded === 0) return integerMoneyFormat.format(0);
   return (Number.isInteger(rounded) ? integerMoneyFormat : decimalMoneyFormat).format(rounded);
 }
+
+const roundMoney = (value: number): number => Math.round(value * 100) / 100;
 
 export function formatDuration(minutes: number): string {
   const total = Math.max(0, Math.round(Number.isFinite(minutes) ? minutes : 0));
@@ -246,17 +273,34 @@ export interface RecordsSummary {
   days: number;
   shifts: number;
   averageRate: number;
+  regularMinutes: number;
+  overtimeMinutes: number;
+  overtimeEarnings: number;
 }
 
 export function summarizeRecords(records: WorkRecord[]): RecordsSummary {
-  const minutes = records.reduce((sum, record) => sum + recordMinutes(record), 0);
-  const earnings = records.reduce((sum, record) => sum + recordEarnings(record), 0);
+  let minutes = 0;
+  let earnings = 0;
+  let regularMinutes = 0;
+  let overtimeMinutes = 0;
+  let overtimeEarnings = 0;
+  records.forEach((record) => {
+    const pay = recordPay(record);
+    minutes += pay.minutes;
+    earnings += pay.total;
+    regularMinutes += pay.regularMinutes;
+    overtimeMinutes += pay.overtimeMinutes;
+    overtimeEarnings += pay.overtimePay;
+  });
   return {
     minutes,
-    earnings,
+    earnings: roundMoney(earnings),
     days: new Set(records.map((record) => record.date)).size,
     shifts: records.length,
     averageRate: minutes > 0 ? earnings / (minutes / 60) : 0,
+    regularMinutes,
+    overtimeMinutes,
+    overtimeEarnings: roundMoney(overtimeEarnings),
   };
 }
 
@@ -328,21 +372,41 @@ export function downloadFile(filename: string, content: string, mime: string): v
 }
 
 export function toCsv(records: WorkRecord[]): string {
-  const header = ['日期', '班次', '开始', '结束', '休息(分钟)', '工时(小时)', '时薪', '倍数', '收入', '备注'];
+  const header = [
+    '日期',
+    '班次',
+    '开始',
+    '结束',
+    '休息(分钟)',
+    '工时(小时)',
+    '时薪',
+    '倍数',
+    '正常工时(小时)',
+    '加班工时(小时)',
+    '加班倍数',
+    '收入',
+    '备注',
+  ];
   const rows = sortRecords(records)
     .reverse()
-    .map((record) => [
-      record.date,
-      record.shiftName,
-      record.start,
-      record.end,
-      String(record.breakMinutes),
-      (recordMinutes(record) / 60).toFixed(2),
-      String(record.rate),
-      String(record.multiplier),
-      recordEarnings(record).toFixed(2),
-      record.note,
-    ]);
+    .map((record) => {
+      const pay = recordPay(record);
+      return [
+        record.date,
+        record.shiftName,
+        record.start,
+        record.end,
+        String(record.breakMinutes),
+        (pay.minutes / 60).toFixed(2),
+        String(record.rate),
+        String(record.multiplier),
+        (pay.regularMinutes / 60).toFixed(2),
+        (pay.overtimeMinutes / 60).toFixed(2),
+        pay.overtime && pay.overtimeMinutes > 0 ? String(pay.overtime.multiplier) : '',
+        pay.total.toFixed(2),
+        record.note,
+      ];
+    });
   const escape = (value: string) => {
     const guarded = /^[=+\-@\t\r]/.test(value) ? `'${value}` : value;
     return `"${guarded.replace(/"/g, '""')}"`;
@@ -357,8 +421,6 @@ export interface SettlementTotals {
   adjustmentTotal: number;
   netDue: number;
 }
-
-const roundMoney = (value: number): number => Math.round(value * 100) / 100;
 
 export function settlementTotals(
   baseEarnings: number,
@@ -399,6 +461,9 @@ interface PayslipParams {
   paidAt: string | null;
   paidAmount: number | null;
   note: string;
+  /** 2.0 起工资条展示加班明细 */
+  overtimeMinutes?: number;
+  overtimeEarnings?: number;
 }
 
 export function buildPayslipText({
@@ -412,6 +477,8 @@ export function buildPayslipText({
   paidAt,
   paidAmount,
   note,
+  overtimeMinutes = 0,
+  overtimeEarnings = 0,
 }: PayslipParams): string {
   const lines = [
     `工时账本 · ${monthLabel} 工资条`,
@@ -419,6 +486,11 @@ export function buildPayslipText({
     '',
     `工时收入：¥${formatMoney(baseEarnings)}`,
   ];
+  if (overtimeMinutes > 0) {
+    lines.push(
+      `其中加班：${formatDuration(overtimeMinutes)} · ¥${formatMoney(overtimeEarnings)}`,
+    );
+  }
   const labels: Record<SettlementAdjustment['kind'], string> = {
     bonus: '奖金',
     deduction: '扣款',

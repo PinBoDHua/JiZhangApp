@@ -132,7 +132,7 @@ export function Settings({
         <div className="settings-heading">
           <div>
             <h2>班次与计薪</h2>
-            <p>每种班次可以设置独立的时薪</p>
+            <p>每种班次可以设置独立的时薪和加班规则</p>
           </div>
         </div>
         <div className="settings-group">
@@ -158,6 +158,9 @@ export function Settings({
                     {template.start} – {template.end}
                     {isOvernight(template.start, template.end) ? ' 次日' : ''} ·{' '}
                     {formatDuration(minutes)}
+                    {template.overtime
+                      ? ` · 加班 ${template.overtime.multiplier}×`
+                      : ''}
                   </span>
                 </span>
                 <span className="template-rate">

@@ -1,5 +1,10 @@
-﻿import { useState, type CSSProperties } from 'react';
-import { SHIFT_COLORS, SHIFT_COLOR_NAMES, type ShiftTemplate } from '../types';
+import { useState, type CSSProperties } from 'react';
+import {
+  SHIFT_COLORS,
+  SHIFT_COLOR_NAMES,
+  type OvertimeRule,
+  type ShiftTemplate,
+} from '../types';
 import {
   formatDuration,
   isOvernight,
@@ -9,6 +14,7 @@ import {
 import { validateShiftDraft } from '../shiftDraft';
 import { BottomSheet } from './BottomSheet';
 import { NumberInput } from './NumberInput';
+import { OvertimeField } from './ShiftFormFields';
 
 export interface TemplateInput {
   name: string;
@@ -17,6 +23,7 @@ export interface TemplateInput {
   end: string;
   breakMinutes: number;
   rate: number;
+  overtime: OvertimeRule | null;
 }
 
 interface TemplateSheetProps {
@@ -41,6 +48,7 @@ export function TemplateSheet({
     end: template?.end ?? '17:00',
     breakMinutes: template?.breakMinutes ?? 60,
     rate: template?.rate ?? 20,
+    overtime: template?.overtime ?? null,
   });
 
   const raw = rawMinutes(draft.start, draft.end);
@@ -62,6 +70,7 @@ export function TemplateSheet({
       end: draft.end,
       breakMinutes: Math.max(0, Math.round(draft.breakMinutes)),
       rate: Math.max(0, draft.rate),
+      overtime: draft.overtime,
     });
   };
 
@@ -87,6 +96,7 @@ export function TemplateSheet({
             <span className="template-preview-meta">
               {draft.start} – {draft.end}
               {overnight ? ' 次日' : ''} · {formatDuration(worked)} · ¥{draft.rate}/时
+              {draft.overtime ? ` · 加班 ${draft.overtime.multiplier}×` : ''}
             </span>
           </div>
           <button
@@ -200,6 +210,14 @@ export function TemplateSheet({
             </div>
           </div>
         </div>
+
+        <OvertimeField
+          value={draft.overtime}
+          onChange={(overtime) => patch({ overtime })}
+          minutes={worked}
+          rate={draft.rate}
+          multiplier={1}
+        />
       </div>
     </BottomSheet>
   );

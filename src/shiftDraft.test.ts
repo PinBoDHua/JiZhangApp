@@ -31,4 +31,25 @@ describe('shift draft validation', () => {
       '休息时长不能超过班次总时长',
     );
   });
+
+  it('validates an optional overtime rule', () => {
+    expect(
+      validateShiftDraft({
+        ...base,
+        overtime: { standardMinutes: 8 * 60, multiplier: 1.5 },
+      }),
+    ).toBe('');
+    expect(
+      validateShiftDraft({
+        ...base,
+        overtime: { standardMinutes: 0, multiplier: 1.5 },
+      }),
+    ).toBe('加班规则有误，请检查标准工时和加班倍数');
+    expect(
+      validateShiftDraft({
+        ...base,
+        overtime: { standardMinutes: 8 * 60, multiplier: 1 },
+      }),
+    ).toBe('加班规则有误，请检查标准工时和加班倍数');
+  });
 });

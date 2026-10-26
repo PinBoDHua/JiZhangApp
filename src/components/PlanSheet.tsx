@@ -1,18 +1,20 @@
-﻿import { useState } from 'react';
+import { useState } from 'react';
 import {
   SHIFT_COLORS,
+  type OvertimeRule,
   type PlanInput,
   type PlannedShift,
   type ShiftTemplate,
 } from '../types';
 import {
   addDaysISO,
-  earningsOf,
   formatDateCN,
   formatDuration,
+  formatHours,
   formatMoney,
   rawMinutes,
   repeatDatesISO,
+  shiftPay,
   todayISO,
   workedMinutes,
 } from '../utils';
@@ -23,6 +25,7 @@ import { CalendarIcon } from './Icons';
 import {
   BreakRateField,
   MultiplierField,
+  OvertimeField,
   ShiftChipsField,
   WorkTimeField,
 } from './ShiftFormFields';
@@ -38,6 +41,7 @@ interface Draft {
   rate: number;
   multiplier: number;
   note: string;
+  overtime: OvertimeRule | null;
   reminderEnabled: boolean;
   reminderLeadMinutes: number | null;
 }
@@ -84,6 +88,7 @@ function createDraft(
       rate: plan.rate,
       multiplier: plan.multiplier,
       note: plan.note,
+      overtime: plan.overtime ?? null,
       reminderEnabled: plan.reminderEnabled !== false,
       reminderLeadMinutes: plan.reminderLeadMinutes ?? null,
     };
@@ -101,6 +106,7 @@ function createDraft(
       rate: template.rate,
       multiplier: 1,
       note: '',
+      overtime: template.overtime ?? null,
       reminderEnabled: true,
       reminderLeadMinutes: null,
     };
@@ -116,6 +122,7 @@ function createDraft(
     rate: templates[0]?.rate ?? 20,
     multiplier: 1,
     note: '',
+    overtime: null,
     reminderEnabled: true,
     reminderLeadMinutes: null,
   };
@@ -141,13 +148,15 @@ export function PlanSheet({
 
   const raw = rawMinutes(draft.start, draft.end);
   const minutes = workedMinutes(draft.start, draft.end, draft.breakMinutes);
-  const earnings = earningsOf({
+  const pay = shiftPay({
     start: draft.start,
     end: draft.end,
     breakMinutes: draft.breakMinutes,
     rate: draft.rate,
     multiplier: draft.multiplier,
+    overtime: draft.overtime,
   });
+  const earnings = pay.total;
   const globalLeadLabel =
     REMINDER_LEAD_OPTIONS.find((option) => option.minutes === globalReminderLeadMinutes)?.label ??
     `${globalReminderLeadMinutes} 分钟`;
@@ -158,6 +167,20 @@ export function PlanSheet({
 
   const patch = (next: Partial<Draft>) => {
     setDraft((prev) => ({ ...prev, ...next }));
+  };
+
+  const changeMultiplier = (multiplier: number) => {
+    patch({
+      multiplier,
+      ...(draft.overtime
+        ? {
+            overtime: {
+              ...draft.overtime,
+              multiplier: Math.max(draft.overtime.multiplier, multiplier),
+            },
+          }
+        : {}),
+    });
   };
 
 
@@ -175,6 +198,7 @@ export function PlanSheet({
         rate: Math.max(0, draft.rate),
         multiplier: draft.multiplier,
         note: draft.note.trim(),
+        overtime: draft.overtime,
         reminderEnabled: draft.reminderEnabled,
         reminderLeadMinutes: draft.reminderLeadMinutes,
       },
@@ -212,6 +236,9 @@ export function PlanSheet({
             <span className="pay-preview-meta">
               {formatDuration(minutes)} · ¥{draft.rate}/时
               {draft.multiplier !== 1 ? ` × ${draft.multiplier}` : ''}
+              {pay.overtimeMinutes > 0
+                ? ` · 加班 ${formatHours(pay.overtimeMinutes)}h`
+                : ''}
               {dates.length > 1 ? ` · 单班 ¥${formatMoney(earnings)}` : ''}
             </span>
           </div>
@@ -315,8 +342,16 @@ export function PlanSheet({
 
         <MultiplierField
           value={draft.multiplier}
-          onChange={(multiplier) => patch({ multiplier })}
+          onChange={changeMultiplier}
           note="加班时使用"
+        />
+
+        <OvertimeField
+          value={draft.overtime}
+          onChange={(overtime) => patch({ overtime })}
+          minutes={minutes}
+          rate={draft.rate}
+          multiplier={draft.multiplier}
         />
 
         {reminderAvailable ? (

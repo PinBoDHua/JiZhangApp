@@ -1,6 +1,7 @@
-﻿import { describe, expect, it } from 'vitest';
+import { describe, expect, it } from 'vitest';
 import { renderToString } from 'react-dom/server';
 import type { ActiveShift, PlanHistoryEntry, PlannedShift, WorkRecord } from './types';
+import type { MonthForecast } from './forecast';
 
 // 这些组件只依赖 window.matchMedia / 定时器，渲染一次即可验证不会崩溃
 const stubWindow = {
@@ -28,6 +29,8 @@ const { RotationSheet } = await import('./components/RotationSheet');
 const { Settings } = await import('./components/Settings');
 const { Stats } = await import('./components/Stats');
 const { Calendar } = await import('./components/Calendar');
+const { YearReview } = await import('./components/YearReview');
+const { ForecastCard } = await import('./components/ForecastCard');
 const { MissedPlansSheet } = await import('./components/MissedPlansSheet');
 const { GoalSheet } = await import('./components/GoalSheet');
 const { StartTimingSheet } = await import('./components/StartTimingSheet');
@@ -65,6 +68,11 @@ const plan: PlannedShift = {
   note: '',
   createdAt: 1,
   updatedAt: 1,
+};
+
+const overtimeTemplate = {
+  ...DEFAULT_TEMPLATES[0],
+  overtime: { standardMinutes: 8 * 60, multiplier: 1.5 },
 };
 
 const active: ActiveShift = {
@@ -200,6 +208,9 @@ describe('app smoke render', () => {
         />,
       ),
       renderToString(
+        <YearReview year={2026} records={[record]} onExport={noop} />,
+      ),
+      renderToString(
         <Settings
           templates={DEFAULT_TEMPLATES}
           recordCount={1}
@@ -242,8 +253,57 @@ describe('app smoke render', () => {
     expect(output[7]).toContain('结束打卡');
     expect(output[8]).toContain('轮班表');
     expect(output[13]).toContain('排班对账');
-    expect(output[14]).toContain('about-version');
-    expect(output[14]).toContain('工时账本 · v');
-    expect(output[14]).toMatch(/\d+\.\d+\.\d+/);
+    expect(output[14]).toContain('年度复盘');
+    expect(output[14]).toContain('heat-cell');
+    expect(output[15]).toContain('about-version');
+    expect(output[15]).toContain('工时账本 · v');
+    expect(output[15]).toMatch(/\d+\.\d+\.\d+/);
+  });
+
+  it('renders 2.0 segmented pay and forecast UI', () => {
+    const recordHtml = renderToString(
+      <RecordSheet
+        templates={[overtimeTemplate]}
+        template={overtimeTemplate}
+        onClose={noop}
+        onSave={noop}
+      />,
+    );
+    expect(recordHtml).toContain('加班分段');
+    expect(recordHtml).toContain('标准工时');
+    expect(recordHtml).toContain('1.5×');
+
+    const templateHtml = renderToString(
+      <TemplateSheet template={overtimeTemplate} onClose={noop} onSave={noop} />,
+    );
+    expect(templateHtml).toContain('加班分段');
+    expect(templateHtml).toContain('加班 1.5×');
+
+    const forecast: MonthForecast = {
+      monthPrefix: '2026-10',
+      recordedShifts: 1,
+      recordedMinutes: 480,
+      recordedEarnings: 160,
+      recordedDays: 1,
+      upcomingPlans: 1,
+      upcomingMinutes: 480,
+      upcomingEarnings: 160,
+      upcomingDays: 1,
+      projectedMinutes: 960,
+      projectedEarnings: 320,
+      goal: 1000,
+      recordedPercent: 16,
+      projectedPercent: 32,
+      remainingToGoal: 840,
+      projectedRemaining: 680,
+      averageUpcomingEarning: 160,
+      shiftsToGoal: 5,
+    };
+    const forecastHtml = renderToString(
+      <ForecastCard forecast={forecast} monthLabel="2026年10月" />,
+    );
+    expect(forecastHtml).toContain('收入预测');
+    expect(forecastHtml).toContain('32');
+    expect(forecastHtml).toContain('还差 ¥680');
   });
 });

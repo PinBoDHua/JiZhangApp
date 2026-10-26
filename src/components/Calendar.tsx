@@ -15,6 +15,7 @@ import {
   monthLabel,
   pad2,
   parseISODate,
+  planPay,
   recordEarnings,
   recordMinutes,
   recordsInMonth,
@@ -103,7 +104,8 @@ function PlanRow({
   const past = isPlanPast(plan, current);
   const startable = !past && canStartPlan(plan, current);
   const minutes = workedMinutes(plan.start, plan.end, plan.breakMinutes);
-  const earnings = earningsOf(plan);
+  const pay = planPay(plan);
+  const earnings = pay.total;
   const reminder = reminderEnabled && plan.reminderEnabled !== false && !past;
   const missed = isPlanMissed(plan, current, activePlanId);
   const isActivePlan = activePlanId === plan.id;
@@ -137,6 +139,11 @@ function PlanRow({
             ) : null}
             {plan.multiplier !== 1 ? (
               <span className="mini-tag is-accent">×{plan.multiplier}</span>
+            ) : null}
+            {pay.overtimeMinutes > 0 ? (
+              <span className="mini-tag is-overtime">
+                加班 {formatHours(pay.overtimeMinutes)}h
+              </span>
             ) : null}
             {reminder ? (
               <BellIcon size={11} className="plan-reminder-icon" />

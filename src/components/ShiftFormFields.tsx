@@ -2,9 +2,23 @@ import type { CSSProperties } from 'react';
 import {
   SHIFT_COLORS,
   SHIFT_COLOR_NAMES,
+  type OvertimeRule,
   type ShiftTemplate,
 } from '../types';
-import { formatDuration, isOvernight, rawMinutes, workedMinutes } from '../utils';
+import {
+  computePay,
+  DEFAULT_OVERTIME_MULTIPLIER,
+  DEFAULT_STANDARD_MINUTES,
+  normalizeOvertimeRule,
+} from '../pay';
+import {
+  formatDuration,
+  formatHours,
+  formatMoney,
+  isOvernight,
+  rawMinutes,
+  workedMinutes,
+} from '../utils';
 import { MoonIcon } from './Icons';
 import { MultiplierOptions } from './MultiplierOptions';
 import { NumberInput } from './NumberInput';
@@ -17,6 +31,7 @@ export interface ShiftPatch {
   end?: string;
   breakMinutes?: number;
   rate?: number;
+  overtime?: OvertimeRule | null;
 }
 
 interface ShiftChipsFieldProps {
@@ -46,6 +61,7 @@ export function ShiftChipsField({
       end: template.end,
       breakMinutes: template.breakMinutes,
       rate: template.rate,
+      overtime: template.overtime ?? null,
     });
   };
 
@@ -246,6 +262,137 @@ export function MultiplierField({ value, onChange, note }: MultiplierFieldProps)
         {note ? <small className="field-label-note">{note}</small> : null}
       </span>
       <MultiplierOptions value={value} onChange={onChange} />
+    </div>
+  );
+}
+
+interface OvertimeFieldProps {
+  value: OvertimeRule | null | undefined;
+  onChange: (value: OvertimeRule | null) => void;
+  /** 净工时，用于实时预览分段金额 */
+  minutes: number;
+  rate: number;
+  multiplier: number;
+}
+
+const MIN_STANDARD_HOURS = 0.5;
+const MAX_STANDARD_HOURS = 24;
+
+/** 加班分段：标准工时以内正常计薪，超出部分按加班倍数 */
+export function OvertimeField({
+  value,
+  onChange,
+  minutes,
+  rate,
+  multiplier,
+}: OvertimeFieldProps) {
+  const rule = normalizeOvertimeRule(value);
+  const enabled = Boolean(rule);
+  const effective = rule ?? {
+    standardMinutes: DEFAULT_STANDARD_MINUTES,
+    multiplier: DEFAULT_OVERTIME_MULTIPLIER,
+  };
+  const standardHours = effective.standardMinutes / 60;
+  const pay = computePay({
+    minutes,
+    rate,
+    multiplier,
+    overtime: enabled ? effective : null,
+  });
+
+  const updateHours = (hours: number) => {
+    const clamped = Math.min(
+      MAX_STANDARD_HOURS,
+      Math.max(MIN_STANDARD_HOURS, Number.isFinite(hours) ? hours : standardHours),
+    );
+    onChange({
+      ...effective,
+      standardMinutes: Math.round(clamped * 60),
+    });
+  };
+
+  const stepHours = (delta: number) => updateHours(standardHours + delta);
+
+  return (
+    <div className="field overtime-field">
+      <div className="field-switch-row">
+        <span className="field-label">
+          加班分段
+          <small className="field-label-note">超过标准工时按加班倍数计薪</small>
+        </span>
+        <button
+          type="button"
+          role="switch"
+          aria-checked={enabled}
+          aria-label="开启加班分段计薪"
+          className={`switch${enabled ? ' is-on' : ''}`}
+          onClick={() =>
+            onChange(
+              enabled
+                ? null
+                : {
+                    standardMinutes: DEFAULT_STANDARD_MINUTES,
+                    multiplier: DEFAULT_OVERTIME_MULTIPLIER,
+                  },
+            )
+          }
+        >
+          <span aria-hidden="true" />
+        </button>
+      </div>
+
+      {enabled ? (
+        <>
+          <div className="form-grid overtime-inputs">
+            <div className="field">
+              <span className="field-label">标准工时</span>
+              <div className="stepper">
+                <button
+                  type="button"
+                  onClick={() => stepHours(-0.5)}
+                  aria-label="减少半小时标准工时"
+                >
+                  −
+                </button>
+                <span className="stepper-value">
+                  <NumberInput
+                    inputMode="decimal"
+                    min={MIN_STANDARD_HOURS}
+                    max={MAX_STANDARD_HOURS}
+                    value={standardHours}
+                    onChange={updateHours}
+                    ariaLabel="标准工时（小时）"
+                  />
+                  <small>小时</small>
+                </span>
+                <button
+                  type="button"
+                  onClick={() => stepHours(0.5)}
+                  aria-label="增加半小时标准工时"
+                >
+                  +
+                </button>
+              </div>
+            </div>
+            <div className="field">
+              <span className="field-label">加班倍数</span>
+              <MultiplierOptions
+                value={Math.max(effective.multiplier, multiplier)}
+                min={Math.max(1.25, multiplier)}
+                label="选择加班倍数"
+                onChange={(next) => onChange({ ...effective, multiplier: next })}
+              />
+            </div>
+          </div>
+          <p className="field-hint overtime-hint">
+            {pay.overtimeMinutes > 0
+              ? `正常 ${formatHours(pay.regularMinutes)}h ¥${formatMoney(pay.regularPay)} · 加班 ${formatHours(pay.overtimeMinutes)}h ×${pay.overtime?.multiplier ?? effective.multiplier} ¥${formatMoney(pay.overtimePay)}`
+              : `不超过 ${formatHours(effective.standardMinutes)} 小时的部分按正常倍数，超出部分按 ${effective.multiplier}× 计算。`}
+          </p>
+        </>
+      ) : (
+        <p className="field-hint">不开启时，整班按上面的计薪倍数计算。</p>
+      )}
     </div>
   );
 }

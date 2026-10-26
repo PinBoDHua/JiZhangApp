@@ -61,6 +61,7 @@ export function restorePendingPlan(entry: PlanHistoryEntry): PlannedShift {
     rate: entry.rate,
     multiplier: entry.multiplier,
     note: entry.note,
+    overtime: entry.overtime,
     createdAt: entry.createdAt,
     updatedAt: entry.updatedAt,
     reminderEnabled: entry.reminderEnabled,

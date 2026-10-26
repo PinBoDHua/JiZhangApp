@@ -1,6 +1,7 @@
-﻿import { useState } from 'react';
+import { useState } from 'react';
 import {
   SHIFT_COLORS,
+  type OvertimeRule,
   type PlannedShift,
   type RecordInput,
   type ShiftTemplate,
@@ -8,11 +9,12 @@ import {
 } from '../types';
 import {
   addDaysISO,
-  earningsOf,
   formatDateCN,
   formatDuration,
+  formatHours,
   formatMoney,
   rawMinutes,
+  shiftPay,
   todayISO,
   workedMinutes,
 } from '../utils';
@@ -22,6 +24,7 @@ import { CalendarIcon, CopyIcon } from './Icons';
 import {
   BreakRateField,
   MultiplierField,
+  OvertimeField,
   ShiftChipsField,
   WorkTimeField,
 } from './ShiftFormFields';
@@ -37,6 +40,7 @@ interface Draft {
   rate: number;
   multiplier: number;
   note: string;
+  overtime: OvertimeRule | null;
 }
 
 interface RecordSheetProps {
@@ -74,6 +78,7 @@ function createDraft(
       rate: record.rate,
       multiplier: record.multiplier,
       note: record.note,
+      overtime: record.overtime ?? null,
     };
   }
   if (plan) {
@@ -91,6 +96,7 @@ function createDraft(
       rate: plan.rate,
       multiplier: plan.multiplier,
       note: plan.note,
+      overtime: plan.overtime ?? null,
     };
   }
   const date = initialDate ?? todayISO();
@@ -106,6 +112,7 @@ function createDraft(
       rate: template.rate,
       multiplier: 1,
       note: '',
+      overtime: template.overtime ?? null,
     };
   }
   return {
@@ -119,6 +126,7 @@ function createDraft(
     rate: templates[0]?.rate ?? 20,
     multiplier: 1,
     note: '',
+    overtime: null,
   };
 }
 
@@ -140,19 +148,35 @@ export function RecordSheet({
 
   const raw = rawMinutes(draft.start, draft.end);
   const minutes = workedMinutes(draft.start, draft.end, draft.breakMinutes);
-  const earnings = earningsOf({
+  const pay = shiftPay({
     start: draft.start,
     end: draft.end,
     breakMinutes: draft.breakMinutes,
     rate: draft.rate,
     multiplier: draft.multiplier,
+    overtime: draft.overtime,
   });
+  const earnings = pay.total;
   const lockedToPlan = Boolean(plan && !record);
   const error = validateShiftDraft(draft, raw);
   const valid = error === '';
 
   const patch = (next: Partial<Draft>) => {
     setDraft((prev) => ({ ...prev, ...next }));
+  };
+
+  const changeMultiplier = (multiplier: number) => {
+    patch({
+      multiplier,
+      ...(draft.overtime
+        ? {
+            overtime: {
+              ...draft.overtime,
+              multiplier: Math.max(draft.overtime.multiplier, multiplier),
+            },
+          }
+        : {}),
+    });
   };
 
   const applyRecentRecord = () => {
@@ -170,6 +194,7 @@ export function RecordSheet({
       rate: recentRecord.rate,
       multiplier: recentRecord.multiplier,
       note: recentRecord.note,
+      overtime: recentRecord.overtime ?? null,
     });
   };
 
@@ -186,6 +211,7 @@ export function RecordSheet({
       rate: Math.max(0, draft.rate),
       multiplier: draft.multiplier,
       note: draft.note.trim(),
+      overtime: draft.overtime,
     });
   };
 
@@ -225,6 +251,9 @@ export function RecordSheet({
             <span className="pay-preview-meta">
               {formatDuration(minutes)} · ¥{draft.rate}/时
               {draft.multiplier !== 1 ? ` × ${draft.multiplier}` : ''}
+              {pay.overtimeMinutes > 0
+                ? ` · 加班 ${formatHours(pay.overtimeMinutes)}h`
+                : ''}
             </span>
           </div>
           <button
@@ -326,8 +355,16 @@ export function RecordSheet({
 
         <MultiplierField
           value={draft.multiplier}
-          onChange={(multiplier) => patch({ multiplier })}
+          onChange={changeMultiplier}
           note="加班时使用"
+        />
+
+        <OvertimeField
+          value={draft.overtime}
+          onChange={(overtime) => patch({ overtime })}
+          minutes={minutes}
+          rate={draft.rate}
+          multiplier={draft.multiplier}
         />
 
         <div className="field">

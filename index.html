@@ -7,7 +7,7 @@
     <meta name="color-scheme" content="light dark" />
     <meta
       name="description"
-      content="记录班次工时、排班计划、打卡计时与工资结算：支持轮班表、奖金扣款、实际到账、周/月/年报表和工资条导出，数据存在本机，离线可用。"
+      content="记录班次工时、排班计划、打卡计时与工资结算：支持分段加班计薪、轮班表、奖金扣款、实际到账、收入预测、年度复盘和工资条导出，数据存在本机，离线可用。"
     />
     <meta name="apple-mobile-web-app-capable" content="yes" />
     <meta name="apple-mobile-web-app-status-bar-style" content="default" />
@@ -20,7 +20,11 @@
     <title>工时账本 · 班次与收入记录</title>
     <script>
       try {
-        var saved = JSON.parse(localStorage.getItem('shift-ledger.preferences.v1') || '{}');
+        var saved = JSON.parse(
+          localStorage.getItem('shift-ledger.preferences.v2') ||
+            localStorage.getItem('shift-ledger.preferences.v1') ||
+            '{}',
+        );
         var dark =
           saved.theme === 'dark' ||
           (saved.theme !== 'light' &&
