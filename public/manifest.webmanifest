@@ -10,6 +10,36 @@
   "background_color": "#f4f0e7",
   "theme_color": "#f4f0e7",
   "categories": ["productivity", "finance"],
+  "shortcuts": [
+    {
+      "name": "记一班",
+      "short_name": "记一班",
+      "description": "记下这一班的工时与收入",
+      "url": "/?action=record",
+      "icons": [{ "src": "/icons/icon-192.png", "sizes": "192x192", "type": "image/png" }]
+    },
+    {
+      "name": "打卡计时",
+      "short_name": "打卡",
+      "description": "开始一次计时打卡",
+      "url": "/?action=timing",
+      "icons": [{ "src": "/icons/icon-192.png", "sizes": "192x192", "type": "image/png" }]
+    },
+    {
+      "name": "批量补记",
+      "short_name": "补记",
+      "description": "一次补齐漏掉的班次",
+      "url": "/?action=batch",
+      "icons": [{ "src": "/icons/icon-192.png", "sizes": "192x192", "type": "image/png" }]
+    },
+    {
+      "name": "本月统计",
+      "short_name": "统计",
+      "description": "查看本月收入与工时",
+      "url": "/?action=stats",
+      "icons": [{ "src": "/icons/icon-192.png", "sizes": "192x192", "type": "image/png" }]
+    }
+  ],
   "icons": [
     {
       "src": "/icons/icon-192.png",

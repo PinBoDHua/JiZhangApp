@@ -1,5 +1,64 @@
 # 更新日志
 
+## 2.2.0 — 2026-10-27
+
+**主题：算对每一班，补上漏掉的班。**
+
+### 新增
+
+- **日期倍率**：偏好里的 `dayRule` 保存周末倍数、节假日倍数与节假日日期。新建记录、排班、批量补记时按当天规则带出倍数，手动改过倍数后不再自动覆盖；倍数仍写入记录快照，改设置不影响历史金额。
+- **批量补记**：日历页新增入口，按日期区间与重复星期生成记录。已有记录的日期自动跳过，命中的排班一并标记完成，生成后可在提示条里撤销。默认补最近 7 天，单次上限 62 天。
+- **CSV 导入**：设置页「导入表格」。兼容本应用导出的 13 列表头，也接受「日期 / 班次 / 开始 / 结束 / 休息 / 时薪 / 倍数 / 备注」的简化表头；支持 BOM、CRLF、引号转义、`2026/1/5`、`9:00` 等格式；按「日期 + 班次 + 开始时间」去重。
+- **桌面快捷方式**：Android `shortcuts.xml` 提供记一班、打卡计时、批量补记、本月统计；PWA manifest 同步四个 shortcut。两端统一由 `src/shortcuts.ts` 解析 `gongshi://xxx` 与 `?action=xxx`。
+- **备份 v3**：新增日期倍率规则；`parseBackup` 同时接受 `version` 1 / 2 / 3，旧备份不会覆盖当前规则。
+
+### 变更
+
+- 记录表单切换日期时按当天规则重新带出倍数；从排班转入或编辑历史记录时保持原值。
+- 排班表单新建时按起始日期带出倍数；编辑已有排班不覆盖。
+- 设置页新增「日期倍率」区块：开关、周末 / 节假日倍数选择、节假日日期增删，沿用现有开关与分段控件样式。
+- 日历页记录模式的「查看或补记班次」提示改为「批量补记」按钮。
+- 版本号 2.2.0；Android `versionCode` 14、`versionName` 2.2.0。
+
+### 工程
+
+- 新增 `src/dayRule.ts`、`src/batch.ts`、`src/csv.ts`、`src/shortcuts.ts`、`src/components/BatchRecordSheet.tsx` 及对应测试。
+- TypeScript 6.0.3 → 7.0.2，oxlint 1.88 → 1.90，Vite 8.3.5。
+- AGP 8.13.0 → 8.13.2；`clean` 任务改用 `layout.buildDirectory`，兼容 Gradle 9。
+- 测试从 97 个增加到 125 个；`tsc -b`、oxlint、`vite build` 全部通过。
+- Playwright（Edge，390×844）覆盖日期倍率开启前后、批量补记、周六自动 2×、深色模式；控制台无 error。
+
+## 2.1.0 — 2026-10-26
+
+**主题：让每一次点击都有回应。**
+
+### 新增
+
+- **Motion 2.1 动效层**：统一的时长/曲线 token，页面切换方向感、底部浮层跟手拖拽与回弹、月历滑动切月、金额滚动、进度条与图表生长、导航滑动指示器、Toast 退场与倒计时条、主题圆形显影。
+- **浮层统一进退场**：关闭按钮、Esc、Android 返回键、点背景、保存和删除都先播放 220ms 退场再卸载；打开时锁定背景滚动，浮层顶部增加抓取条。
+- **数值范围感知**：`useAnimatedNumber` 增加 `resetKey`，换月/换周/换年/换统计周期时直接切换数值，只有同一范围内变化才滚动。
+- **触感反馈**：Android 上切换标签、保存、开始/结束打卡和删除有克制的振动；`AndroidManifest.xml` 增加 `VIBRATE` 权限。
+- **同类产品对比文档**：`docs/competitive-analysis-motion.md`，包含 7 个同类产品的功能矩阵、分层优先级路线图、动效设计依据与代码落点。
+
+### 变更
+
+- 页面切换从「单向淡入」改为「先退后进」的 300ms 过渡；支持 View Transition 的浏览器用原生快照，旧浏览器回退到 CSS 动画。
+- 底部浮层入场改为 380ms 的 easeOutCubic 曲线，修复旧版 300ms 动画前 60ms 就冲过 67%、后段长时间停顿的问题；不使用向上过冲，避免小面板底部露出缝隙。
+- 点击日历日期打开浮层时，选中格不再做缩放，改为背景/描边/阴影过渡；底部导航锁定滚动时用 `scrollbar-gutter: stable` 预留槽位，修复背景日历被拉伸/宽度跳变。
+- 底部导航从「每个 Tab 各自换底色」改为单枚滑动 pill，窗口尺寸变化会重新测量。
+- 日历左右滑动增加跟手位移、卡片阴影和 22px 上限；松手 56px 阈值切月，回弹 320ms，切月后 380ms 内抑制误触点击。
+- 日历、统计、年复盘、首页金额统一接入滚动数字；目标进度、对账进度、班次构成和预测进度首次出现时展开。
+- `.app-shell` 首屏改为纯透明度淡入，避免 transform 影响 fixed 浮层的包含块。
+- 保留 `prefers-reduced-motion` 全量降级；View Transition、金额滚动和振动在 JS 侧直接跳过。
+- 版本号 2.1.0；Android `versionCode` 13、`versionName` 2.1.0。
+
+### 工程
+
+- 新增 `src/motion.ts`、`src/feedback.ts`、`src/hooks/useAnimatedNumber.ts`、`src/hooks/useIsomorphicLayoutEffect.ts`、`src/sheetMotion.ts`、`src/motion.test.ts`。
+- 新增 View Transition 伪元素样式、动效 token、关键帧、按压反馈与减少动态效果规则，样式集中在 `src/index.css` 的 Motion 2.1 段。
+- 测试从 91 个增加到 97 个；`tsc -b --strict`、oxlint、vite build 全部通过。
+- Playwright（Edge，390×844）覆盖浅色/深色、页面切换中段、浮层拖拽、Toast、日历滑动、减少动态效果和 View Transition 回退；控制台无 error。
+
 ## 2.0.0 — 2026-10-26
 
 **主题：算得准、看得远、存得稳。**

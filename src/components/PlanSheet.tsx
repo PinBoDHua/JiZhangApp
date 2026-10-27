@@ -1,6 +1,7 @@
 import { useState } from 'react';
 import {
   SHIFT_COLORS,
+  type DayPayRule,
   type OvertimeRule,
   type PlanInput,
   type PlannedShift,
@@ -22,6 +23,7 @@ import { REMINDER_LEAD_OPTIONS } from '../reminders';
 import { validateShiftDraft } from '../shiftDraft';
 import { BottomSheet } from './BottomSheet';
 import { CalendarIcon } from './Icons';
+import { describeDayRule, resolveDayRule } from '../dayRule';
 import {
   BreakRateField,
   MultiplierField,
@@ -51,6 +53,8 @@ interface PlanSheetProps {
   plan?: PlannedShift;
   initialDate?: string;
   defaultTemplate: ShiftTemplate | null;
+  /** 周末 / 节假日自动倍数规则 */
+  dayRule?: DayPayRule;
   reminderAvailable: boolean;
   globalReminderEnabled: boolean;
   globalReminderLeadMinutes: number;
@@ -72,6 +76,7 @@ function createDraft(
   plan?: PlannedShift,
   template?: ShiftTemplate | null,
   initialDate?: string,
+  dayRule?: DayPayRule,
 ): Draft {
   if (plan) {
     return {
@@ -94,6 +99,7 @@ function createDraft(
     };
   }
   const date = initialDate ?? todayISO();
+  const autoMultiplier = resolveDayRule(dayRule, date).multiplier;
   if (template) {
     return {
       date,
@@ -104,7 +110,7 @@ function createDraft(
       end: template.end,
       breakMinutes: template.breakMinutes,
       rate: template.rate,
-      multiplier: 1,
+      multiplier: autoMultiplier,
       note: '',
       overtime: template.overtime ?? null,
       reminderEnabled: true,
@@ -120,7 +126,7 @@ function createDraft(
     end: '18:00',
     breakMinutes: 60,
     rate: templates[0]?.rate ?? 20,
-    multiplier: 1,
+    multiplier: autoMultiplier,
     note: '',
     overtime: null,
     reminderEnabled: true,
@@ -133,6 +139,7 @@ export function PlanSheet({
   plan,
   initialDate,
   defaultTemplate,
+  dayRule,
   reminderAvailable,
   globalReminderEnabled,
   globalReminderLeadMinutes,
@@ -142,9 +149,11 @@ export function PlanSheet({
   escapeDisabled = false,
 }: PlanSheetProps) {
   const [draft, setDraft] = useState<Draft>(() =>
-    createDraft(templates, plan, defaultTemplate, initialDate),
+    createDraft(templates, plan, defaultTemplate, initialDate, dayRule),
   );
   const [repeatWeeks, setRepeatWeeks] = useState(1);
+  // 编辑已有排班或用户手动改过倍数时，不再随日期自动切换
+  const [multiplierTouched, setMultiplierTouched] = useState(Boolean(plan));
 
   const raw = rawMinutes(draft.start, draft.end);
   const minutes = workedMinutes(draft.start, draft.end, draft.breakMinutes);
@@ -157,6 +166,7 @@ export function PlanSheet({
     overtime: draft.overtime,
   });
   const earnings = pay.total;
+  const dayHint = multiplierTouched ? '' : describeDayRule(dayRule, draft.date);
   const globalLeadLabel =
     REMINDER_LEAD_OPTIONS.find((option) => option.minutes === globalReminderLeadMinutes)?.label ??
     `${globalReminderLeadMinutes} 分钟`;
@@ -170,6 +180,7 @@ export function PlanSheet({
   };
 
   const changeMultiplier = (multiplier: number) => {
+    setMultiplierTouched(true);
     patch({
       multiplier,
       ...(draft.overtime
@@ -180,6 +191,27 @@ export function PlanSheet({
             },
           }
         : {}),
+    });
+  };
+
+  /** 换日期时按当天规则带出倍数；用户手动改过则保持原值 */
+  const changeDate = (next: string) => {
+    const resolved = resolveDayRule(dayRule, next).multiplier;
+    setDraft((prev) => {
+      const multiplier = multiplierTouched ? prev.multiplier : resolved;
+      return {
+        ...prev,
+        date: next,
+        multiplier,
+        ...(multiplierTouched || !prev.overtime
+          ? {}
+          : {
+              overtime: {
+                ...prev.overtime,
+                multiplier: Math.max(prev.overtime.multiplier, multiplier),
+              },
+            }),
+      };
     });
   };
 
@@ -263,7 +295,7 @@ export function PlanSheet({
                 type="date"
                 value={draft.date}
                 onChange={(event) => {
-                  if (event.target.value) patch({ date: event.target.value });
+                  if (event.target.value) changeDate(event.target.value);
                 }}
                 aria-label="排班日期"
               />
@@ -272,14 +304,14 @@ export function PlanSheet({
               <button
                 type="button"
                 className={draft.date === today ? 'is-active' : ''}
-                onClick={() => patch({ date: today })}
+                onClick={() => changeDate(today)}
               >
                 今天
               </button>
               <button
                 type="button"
                 className={draft.date === tomorrow ? 'is-active' : ''}
-                onClick={() => patch({ date: tomorrow })}
+                onClick={() => changeDate(tomorrow)}
               >
                 明天
               </button>
@@ -343,7 +375,7 @@ export function PlanSheet({
         <MultiplierField
           value={draft.multiplier}
           onChange={changeMultiplier}
-          note="加班时使用"
+          note={dayHint || '加班时使用'}
         />
 
         <OvertimeField

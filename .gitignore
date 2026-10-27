@@ -19,6 +19,12 @@ android/keystore.properties
 # Release packages
 release/*.apk
 
+# Local motion verification screenshots
+artifacts/
+
+# Local agent workspace data (memory logs, session state)
+.workbuddy/
+
 # Editor directories and files
 .vscode/*
 !.vscode/extensions.json

@@ -101,7 +101,7 @@ describe('backup with shift plans', () => {
       ],
     });
 
-    expect(backup.version).toBe(2);
+    expect(backup.version).toBe(3);
     expect(backup.plans?.map((plan) => plan.id)).toEqual(['plan-early', 'plan-late']);
     expect(backup.planHistory?.map((entry) => entry.id)).toEqual([
       'history-early',
@@ -131,7 +131,7 @@ describe('backup with shift plans', () => {
     };
 
     const parsed = parseBackup(JSON.stringify(legacy));
-    expect(parsed.version).toBe(2);
+    expect(parsed.version).toBe(3);
     expect(parsed.plans).toBeUndefined();
     expect(parsed.planHistory).toBeUndefined();
     expect(parsed.records).toHaveLength(1);
@@ -268,7 +268,7 @@ describe('backup v2', () => {
     });
 
     const parsed = parseBackup(JSON.stringify(backup));
-    expect(parsed.version).toBe(2);
+    expect(parsed.version).toBe(3);
     expect(parsed.appVersion).toBe('2.0.0');
     expect(parsed.templates[0].overtime).toEqual(overtime);
     expect(parsed.records[0].overtime).toEqual(overtime);
@@ -410,5 +410,70 @@ describe('storage v1 -> v2 migration', () => {
     saveActiveShift(null);
     expect(store.get('shift-ledger.active-shift.v1')).toBeUndefined();
     expect(loadActiveShift()).toBeNull();
+  });
+});
+
+describe('backup v3 day rules', () => {
+  it('round-trips weekend and holiday multipliers', () => {
+    const withDayRule: BackupPreferences = {
+      monthlyGoal: 8000,
+      theme: 'system',
+      dayRule: {
+        enabled: true,
+        weekendMultiplier: 1.5,
+        holidayMultiplier: 3,
+        holidays: [{ date: '2026-10-01', label: '国庆' }],
+      },
+    };
+    const backup = buildBackup({
+      records: [],
+      templates: [template],
+      preferences: withDayRule,
+      settlements: [],
+      plans: [],
+      planHistory: [],
+      appVersion: '2.2.0',
+    });
+
+    expect(backup.version).toBe(3);
+    const parsed = parseBackup(JSON.stringify(backup));
+    expect(parsed.version).toBe(3);
+    expect(parsed.preferences?.dayRule).toEqual(withDayRule.dayRule);
+  });
+
+  it('imports a v2 backup without inventing a day rule', () => {
+    const v2 = {
+      app: 'shift-ledger',
+      version: 2,
+      exportedAt: '2026-10-26T00:00:00.000Z',
+      templates: [template],
+      records: [record],
+    };
+    const parsed = parseBackup(JSON.stringify(v2));
+    expect(parsed.version).toBe(3);
+    expect(parsed.preferences).toBeUndefined();
+  });
+
+  it('drops malformed day rules while keeping the rest of the backup', () => {
+    const broken = {
+      app: 'shift-ledger',
+      version: 3,
+      exportedAt: '2026-10-26T00:00:00.000Z',
+      templates: [template],
+      records: [record],
+      preferences: {
+        monthlyGoal: 5000,
+        theme: 'dark',
+        dayRule: {
+          enabled: true,
+          weekendMultiplier: 'two',
+          holidayMultiplier: 3,
+          holidays: [],
+        },
+      },
+    };
+    const parsed = parseBackup(JSON.stringify(broken));
+    expect(parsed.preferences?.dayRule?.weekendMultiplier).toBe(2);
+    expect(parsed.preferences?.theme).toBe('dark');
   });
 });

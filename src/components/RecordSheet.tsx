@@ -1,12 +1,14 @@
 import { useState } from 'react';
 import {
   SHIFT_COLORS,
+  type DayPayRule,
   type OvertimeRule,
   type PlannedShift,
   type RecordInput,
   type ShiftTemplate,
   type WorkRecord,
 } from '../types';
+import { describeDayRule, resolveDayRule } from '../dayRule';
 import {
   addDaysISO,
   formatDateCN,
@@ -50,6 +52,8 @@ interface RecordSheetProps {
   template?: ShiftTemplate | null;
   initialDate?: string;
   recentRecord?: WorkRecord | null;
+  /** 周末 / 节假日自动倍数规则；只在新建时带出，编辑历史记录不覆盖 */
+  dayRule?: DayPayRule;
   onClose: () => void;
   onSave: (input: RecordInput) => void;
   onDelete?: () => void;
@@ -62,6 +66,7 @@ function createDraft(
   plan?: PlannedShift,
   template?: ShiftTemplate | null,
   initialDate?: string,
+  dayRule?: DayPayRule,
 ): Draft {
   if (record) {
     return {
@@ -100,6 +105,7 @@ function createDraft(
     };
   }
   const date = initialDate ?? todayISO();
+  const autoMultiplier = resolveDayRule(dayRule, date).multiplier;
   if (template) {
     return {
       date,
@@ -110,7 +116,7 @@ function createDraft(
       end: template.end,
       breakMinutes: template.breakMinutes,
       rate: template.rate,
-      multiplier: 1,
+      multiplier: autoMultiplier,
       note: '',
       overtime: template.overtime ?? null,
     };
@@ -124,7 +130,7 @@ function createDraft(
     end: '18:00',
     breakMinutes: 60,
     rate: templates[0]?.rate ?? 20,
-    multiplier: 1,
+    multiplier: autoMultiplier,
     note: '',
     overtime: null,
   };
@@ -137,13 +143,18 @@ export function RecordSheet({
   template,
   initialDate,
   recentRecord,
+  dayRule,
   onClose,
   onSave,
   onDelete,
   escapeDisabled = false,
 }: RecordSheetProps) {
   const [draft, setDraft] = useState<Draft>(() =>
-    createDraft(templates, record, plan, template, initialDate),
+    createDraft(templates, record, plan, template, initialDate, dayRule),
+  );
+  // 用户手动改过倍数后，切换日期不再覆盖；编辑记录 / 排班转入时也保持原值
+  const [multiplierTouched, setMultiplierTouched] = useState(
+    Boolean(record || plan),
   );
 
   const raw = rawMinutes(draft.start, draft.end);
@@ -158,6 +169,7 @@ export function RecordSheet({
   });
   const earnings = pay.total;
   const lockedToPlan = Boolean(plan && !record);
+  const dayHint = multiplierTouched ? '' : describeDayRule(dayRule, draft.date);
   const error = validateShiftDraft(draft, raw);
   const valid = error === '';
 
@@ -166,6 +178,7 @@ export function RecordSheet({
   };
 
   const changeMultiplier = (multiplier: number) => {
+    setMultiplierTouched(true);
     patch({
       multiplier,
       ...(draft.overtime
@@ -179,11 +192,33 @@ export function RecordSheet({
     });
   };
 
+  /** 换日期时按当天规则重新带出倍数（用户手动改过就尊重用户的） */
+  const changeDate = (next: string) => {
+    const resolved = resolveDayRule(dayRule, next).multiplier;
+    setDraft((prev) => {
+      const multiplier = multiplierTouched ? prev.multiplier : resolved;
+      return {
+        ...prev,
+        date: next,
+        multiplier,
+        ...(multiplierTouched || !prev.overtime
+          ? {}
+          : {
+              overtime: {
+                ...prev.overtime,
+                multiplier: Math.max(prev.overtime.multiplier, multiplier),
+              },
+            }),
+      };
+    });
+  };
+
   const applyRecentRecord = () => {
     if (!recentRecord) return;
     const matchingTemplate = recentRecord.templateId
       ? templates.find((item) => item.id === recentRecord.templateId)
       : undefined;
+    setMultiplierTouched(true);
     patch({
       templateId: matchingTemplate ? recentRecord.templateId : null,
       shiftName: recentRecord.shiftName,
@@ -278,7 +313,7 @@ export function RecordSheet({
                   type="date"
                   value={draft.date}
                   onChange={(event) => {
-                    if (event.target.value) patch({ date: event.target.value });
+                    if (event.target.value) changeDate(event.target.value);
                   }}
                   aria-label="工作日期"
                 />
@@ -287,14 +322,14 @@ export function RecordSheet({
                 <button
                   type="button"
                   className={draft.date === today ? 'is-active' : ''}
-                  onClick={() => patch({ date: today })}
+                  onClick={() => changeDate(today)}
                 >
                   今天
                 </button>
                 <button
                   type="button"
                   className={draft.date === yesterday ? 'is-active' : ''}
-                  onClick={() => patch({ date: yesterday })}
+                  onClick={() => changeDate(yesterday)}
                 >
                   昨天
                 </button>
@@ -356,7 +391,7 @@ export function RecordSheet({
         <MultiplierField
           value={draft.multiplier}
           onChange={changeMultiplier}
-          note="加班时使用"
+          note={dayHint || '加班时使用'}
         />
 
         <OvertimeField

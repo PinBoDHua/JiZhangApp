@@ -1,5 +1,6 @@
 import { describe, expect, it } from 'vitest';
 import { renderToString } from 'react-dom/server';
+import { DEFAULT_DAY_PAY_RULE } from './types';
 import type { ActiveShift, PlanHistoryEntry, PlannedShift, WorkRecord } from './types';
 import type { MonthForecast } from './forecast';
 
@@ -189,6 +190,7 @@ describe('app smoke render', () => {
           onEditRecord={noop}
           onAddRecord={noop}
           onAddPlan={noop}
+          onOpenBatch={noop}
           onOpenRotation={noop}
           onEditPlan={noop}
           onStartPlan={noop}
@@ -218,9 +220,11 @@ describe('app smoke render', () => {
           theme="system"
           resolvedTheme="light"
           lastBackupAt={null}
+          dayRule={DEFAULT_DAY_PAY_RULE}
           onAddTemplate={noop}
           onEditTemplate={noop}
           onEditGoal={noop}
+          onDayRuleChange={noop}
           onThemeChange={noop}
           reminder={{
             supported: true,
@@ -236,6 +240,7 @@ describe('app smoke render', () => {
           onExportJson={noop}
           onExportCsv={noop}
           onImportFile={noop}
+          onImportCsv={noop}
           onClearRecords={noop}
           installAvailable={false}
           onInstall={noop}

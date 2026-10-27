@@ -1,6 +1,7 @@
 import { useEffect, useState } from 'react';
 import { applyNativeStatusBar } from '../native';
 import type { ThemePreference } from '../types';
+import { useIsomorphicLayoutEffect } from './useIsomorphicLayoutEffect';
 
 /** 解析实际主题（跟随系统时读系统偏好），并同步到文档、状态栏和浏览器主题色 */
 export function useTheme(theme: ThemePreference): 'light' | 'dark' {
@@ -16,7 +17,7 @@ export function useTheme(theme: ThemePreference): 'light' | 'dark' {
     return () => media.removeEventListener('change', onChange);
   }, []);
 
-  useEffect(() => {
+  useIsomorphicLayoutEffect(() => {
     document.documentElement.dataset.theme = resolvedTheme;
     document.documentElement.style.colorScheme = resolvedTheme;
     const themeColor = document.querySelector('meta[name="theme-color"]');

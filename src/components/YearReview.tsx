@@ -5,6 +5,7 @@ import {
   buildAnnualSummary,
   buildYearHeatmap,
 } from '../annual';
+import { useAnimatedNumber } from '../hooks/useAnimatedNumber';
 import type { WorkRecord } from '../types';
 import {
   formatDateCN,
@@ -36,6 +37,9 @@ export function YearReview({ year, records, onExport }: YearReviewProps) {
   const [selectedDate, setSelectedDate] = useState<string | null>(null);
   const selected =
     (selectedDate ? dayMap.get(selectedDate) : undefined) ?? summary.bestDay;
+  const shownEarnings = useAnimatedNumber(summary.earnings, {
+    resetKey: String(year),
+  });
 
   return (
     <section className="panel year-review-panel" aria-label={`${year}年度复盘`}>
@@ -58,7 +62,7 @@ export function YearReview({ year, records, onExport }: YearReviewProps) {
           <span>全年收入</span>
           <strong>
             <small>¥</small>
-            {formatMoney(summary.earnings)}
+            {formatMoney(shownEarnings)}
           </strong>
         </div>
         <div className="year-highlight">
@@ -84,7 +88,7 @@ export function YearReview({ year, records, onExport }: YearReviewProps) {
         </div>
       </div>
 
-      <div className="year-heatmap-scroll">
+      <div className="year-heatmap-scroll" key={year}>
         <div
           className="year-heatmap"
           role="grid"

@@ -1,4 +1,4 @@
-﻿:root {
+:root {
   --paper: #f4f0e7;
   --paper-deep: #ede7db;
   --surface: #fbf8f2;
@@ -38,6 +38,17 @@
   --bar-data: #7a9183;
   --bar-hover: #526b5d;
   --pill-bg: rgba(255, 253, 248, 0.62);
+  /* Motion 2.1：时长和曲线统一收口，快而不飘，慢而不拖 */
+  --ease-enter: cubic-bezier(0.22, 1, 0.36, 1);
+  --ease-exit: cubic-bezier(0.4, 0, 1, 1);
+  --ease-standard: cubic-bezier(0.4, 0, 0.2, 1);
+  --ease-spring: cubic-bezier(0.34, 1.4, 0.64, 1);
+  --ease-sheet: cubic-bezier(0.33, 1, 0.68, 1);
+  --dur-tap: 0.16s;
+  --dur-enter: 0.38s;
+  --dur-exit: 0.22s;
+  --dur-sheet: 0.34s;
+  --dur-screen: 0.3s;
   /* 边到边安全区：Capacitor 8 在 Android 注入 --safe-area-inset-*，
      网页与 iOS 走 env()，两边都取不到时按 0 处理 */
   --safe-top: var(--safe-area-inset-top, env(safe-area-inset-top, 0px));
@@ -150,6 +161,7 @@ a:focus-visible {
   overflow-x: hidden;
   scrollbar-width: thin;
   scrollbar-color: var(--line-strong) transparent;
+  scrollbar-gutter: stable;
   overscroll-behavior-y: contain;
 }
 
@@ -165,7 +177,16 @@ a:focus-visible {
 }
 
 .screen-slot {
-  animation: screen-in 0.3s cubic-bezier(0.22, 1, 0.36, 1) both;
+  animation: screen-in var(--dur-screen) cubic-bezier(0.22, 1, 0.36, 1) both;
+}
+
+/* 原生 View Transitions 可用时，页面切换由浏览器统一编排，避免两套动画叠加 */
+html[data-motion='view-transition'] .screen-slot {
+  animation: none;
+}
+
+html[data-vt-kind='nav'] .app-main {
+  view-transition-name: app-screen;
 }
 
 .screen {
@@ -1446,6 +1467,8 @@ a:focus-visible {
 }
 
 .nav-item {
+  position: relative;
+  z-index: 1;
   display: flex;
   flex-direction: column;
   align-items: center;
@@ -1470,6 +1493,26 @@ a:focus-visible {
   transition: background 0.18s ease, color 0.18s ease;
 }
 
+.nav-active-pill {
+  position: absolute;
+  top: 0;
+  left: 0;
+  z-index: 0;
+  border-radius: 9px;
+  background: var(--nav-active-bg);
+  opacity: 0;
+  pointer-events: none;
+  transition:
+    transform 0.34s var(--ease-spring),
+    width 0.34s var(--ease-spring),
+    height 0.34s var(--ease-spring),
+    opacity 0.18s ease;
+}
+
+.nav-active-pill.is-ready {
+  opacity: 1;
+}
+
 .nav-timer-dot {
   position: absolute;
   top: 1px;
@@ -1479,10 +1522,12 @@ a:focus-visible {
   border-radius: 50%;
   background: var(--accent);
   box-shadow: 0 0 0 2px var(--nav-bg);
+  animation: timer-dot-pulse 2.4s ease-out infinite;
 }
 
 .nav-timer-dot.is-paused {
   background: var(--gold);
+  animation: none;
 }
 
 .nav-label {
@@ -1500,8 +1545,11 @@ a:focus-visible {
 }
 
 .nav-item.is-active .nav-icon {
-  background: var(--nav-active-bg);
   color: var(--nav-active-fg);
+}
+
+.nav-item.is-active .nav-icon svg {
+  animation: nav-icon-pop 0.36s var(--ease-spring);
 }
 
 /* ---------- Sheets ---------- */
@@ -1523,8 +1571,21 @@ a:focus-visible {
   position: absolute;
   inset: 0;
   z-index: 0;
-  background: rgba(14, 24, 19, 0.5);
-  animation: sheet-backdrop-in 0.18s ease-out both;
+  background: rgba(14, 24, 19, calc(0.5 * (1 - var(--dismiss-progress, 0))));
+  animation: sheet-backdrop-in 0.22s ease-out both;
+}
+
+.sheet-backdrop.is-dismissed {
+  pointer-events: none;
+}
+
+.sheet-backdrop.is-closing::before {
+  animation: fade-out 0.2s ease both;
+}
+
+.sheet-backdrop.is-dismissed::before {
+  opacity: 0;
+  transition: opacity 0.18s ease;
 }
 
 .sheet {
@@ -1541,7 +1602,52 @@ a:focus-visible {
   box-shadow: 0 -24px 70px -26px rgba(14, 24, 19, 0.5);
   will-change: transform;
   backface-visibility: hidden;
-  animation: sheet-in 0.3s cubic-bezier(0.22, 1, 0.36, 1) both;
+  animation: sheet-in var(--dur-enter) var(--ease-sheet) both;
+}
+
+.sheet.is-dragging {
+  animation: none;
+  user-select: none;
+  cursor: grabbing;
+}
+
+.sheet.is-closing {
+  pointer-events: none;
+  animation: sheet-out var(--dur-exit) var(--ease-exit) both;
+}
+
+.sheet.is-dismissed {
+  animation: none !important;
+  transform: translate3d(0, 100%, 0) !important;
+}
+
+.sheet-grabber {
+  position: absolute;
+  top: calc(6px + var(--safe-top));
+  left: 50%;
+  z-index: 2;
+  display: grid;
+  place-items: center;
+  width: 64px;
+  height: 18px;
+  margin-left: -32px;
+  touch-action: none;
+  cursor: grab;
+}
+
+.sheet-grabber i {
+  display: block;
+  width: 36px;
+  height: 4px;
+  border-radius: 999px;
+  background: var(--line-strong);
+  opacity: 0.9;
+  transition: transform 0.18s ease, background 0.18s ease;
+}
+
+.sheet.is-dragging .sheet-grabber i {
+  transform: scaleX(1.08);
+  background: var(--muted);
 }
 
 .sheet-header {
@@ -1549,9 +1655,15 @@ a:focus-visible {
   grid-template-columns: 48px 1fr 48px;
   flex: none;
   align-items: center;
-  padding: calc(13px + var(--safe-top)) 13px 12px;
+  padding: calc(18px + var(--safe-top)) 13px 12px;
   border-bottom: 1px solid var(--line);
   background: var(--sheet-header-bg);
+  cursor: grab;
+  touch-action: none;
+}
+
+.sheet-header:active {
+  cursor: grabbing;
 }
 
 .sheet-heading {
@@ -2144,6 +2256,11 @@ a:focus-visible {
   animation: fade-in 0.18s ease both;
 }
 
+.dialog-backdrop.is-closing {
+  pointer-events: none;
+  animation: fade-out 0.16s ease both;
+}
+
 .dialog {
   width: min(100%, 340px);
   padding: 22px 20px 18px;
@@ -2151,6 +2268,10 @@ a:focus-visible {
   background: var(--paper);
   box-shadow: 0 32px 70px -24px rgba(0, 0, 0, 0.45);
   animation: dialog-in 0.24s cubic-bezier(0.22, 1, 0.36, 1) both;
+}
+
+.dialog.is-closing {
+  animation: dialog-out 0.16s var(--ease-exit) both;
 }
 
 .dialog h2 {
@@ -2192,6 +2313,7 @@ a:focus-visible {
   gap: 8px;
   max-width: calc(100% - 40px);
   padding: 9px 14px 9px 9px;
+  overflow: hidden;
   border-radius: 999px;
   background: var(--toast-bg);
   color: var(--toast-fg);
@@ -2200,7 +2322,11 @@ a:focus-visible {
   font-weight: 550;
   pointer-events: none;
   transform: translateX(-50%);
-  animation: toast-in 0.26s cubic-bezier(0.22, 1, 0.36, 1) both;
+  animation: toast-in 0.26s cubic-bezier(0.22, 1, 0.36, 1) var(--toast-delay, 0ms) both;
+}
+
+.toast.is-leaving {
+  animation: toast-out 0.2s var(--ease-exit) both;
 }
 
 .toast.has-action {
@@ -2240,6 +2366,28 @@ a:focus-visible {
   border-radius: 50%;
   background: var(--accent);
   color: #fff;
+}
+
+.toast-icon svg path {
+  stroke-dasharray: 24;
+  stroke-dashoffset: 24;
+  animation: toast-check 0.34s 0.08s var(--ease-enter) forwards;
+}
+
+.toast-life {
+  position: absolute;
+  right: 0;
+  bottom: 0;
+  left: 0;
+  height: 2px;
+  background: currentColor;
+  opacity: 0.28;
+  transform-origin: left center;
+  animation: toast-life var(--toast-life, 2600ms) linear var(--toast-delay, 0ms) forwards;
+}
+
+.toast.is-leaving .toast-life {
+  animation-play-state: paused;
 }
 
 /* ---------- Goal, calendar & search additions ---------- */
@@ -6025,4 +6173,800 @@ button.heat-cell:focus-visible {
   .forecast-amount {
     font-size: 28px;
   }
+}
+
+/* ============================================================
+   Motion 2.1 — 过渡、微交互与页面级动效
+   ============================================================ */
+
+/* 页面容器保持不透明，View Transition 滑动时不会透出后面的内容 */
+.app-main {
+  background: var(--paper);
+}
+
+/* 浮层打开时锁住页面滚动，避免背后内容跟着手指动 */
+html.sheet-open .app-main,
+html.dialog-open .app-main {
+  overflow: hidden;
+}
+
+.app-shell {
+  animation: app-fade 0.24s ease-out;
+}
+
+/* ---------- 数字与进度 ---------- */
+
+.hero-goal-bar span,
+.hero-goal-bar i,
+.forecast-goal-bar span,
+.forecast-goal-bar i,
+.goal-progress-bar span,
+.plan-reconcile-bar span,
+.breakdown-bar span {
+  transform-origin: left center;
+  animation: bar-grow 0.72s var(--ease-enter) both;
+}
+
+.hero-goal.is-done .hero-goal-bar {
+  animation: goal-glow 1.3s var(--ease-standard) 0.15s 1;
+}
+
+.hero-pulse {
+  animation: pulse-soft 3.2s ease-in-out infinite;
+}
+
+/* ---------- 图表 ---------- */
+
+.bar-fill {
+  transform-origin: center bottom;
+  animation: bar-rise 0.48s var(--ease-enter) both;
+  animation-delay: calc(var(--bar-index, 0) * 9ms);
+}
+
+.chart-axis {
+  animation: fade-slide-in 0.32s var(--ease-enter) 0.06s both;
+}
+
+.chart-focus-date,
+.chart-focus-meta {
+  animation: focus-swap 0.2s var(--ease-enter) both;
+}
+
+.week-spark i {
+  transform-origin: center bottom;
+  animation: spark-rise 0.5s var(--ease-enter) both;
+  animation-delay: calc(var(--spark-index, 0) * 28ms);
+  transition: height 0.4s var(--ease-enter);
+}
+
+/* ---------- 列表与日历 ---------- */
+
+.day-group {
+  animation: list-rise 0.38s var(--ease-enter) both;
+  animation-delay: calc(var(--reveal-index, 0) * 24ms);
+}
+
+.calendar-panel {
+  transition: transform 0.32s var(--ease-enter);
+}
+
+.calendar-panel.is-swiping {
+  transition: none !important;
+  will-change: transform;
+  cursor: grabbing;
+  box-shadow: 0 24px 52px -32px rgba(23, 36, 30, 0.55);
+}
+
+.calendar-grid-next {
+  animation: calendar-next 0.3s var(--ease-enter) both;
+}
+
+.calendar-grid-prev {
+  animation: calendar-prev 0.3s var(--ease-enter) both;
+}
+
+.calendar-day {
+  transition:
+    background 0.16s ease,
+    border-color 0.16s ease,
+    color 0.16s ease,
+    box-shadow 0.18s ease;
+}
+
+.calendar-dots i {
+  animation: dot-in 0.22s var(--ease-enter) both;
+}
+
+.day-detail-inner {
+  animation: detail-in 0.24s var(--ease-enter) both;
+}
+
+.year-heatmap-scroll {
+  animation: fade-in 0.35s ease both;
+}
+
+/* ---------- 控件反馈 ---------- */
+
+.switch span {
+  transition: transform 0.24s var(--ease-spring), width 0.18s ease;
+}
+
+.switch:active span {
+  width: 22px;
+}
+
+.segmented-control button {
+  transition:
+    background 0.18s ease,
+    color 0.18s ease,
+    transform 0.16s var(--ease-standard);
+}
+
+.segmented-control button:active {
+  transform: scale(0.96);
+}
+
+.segmented-control button.is-active {
+  animation: segment-pop 0.22s var(--ease-enter);
+}
+
+.nav-icon {
+  transition: background 0.18s ease, color 0.18s ease, transform 0.16s var(--ease-standard);
+}
+
+.nav-item:active .nav-icon {
+  transform: scale(0.9);
+}
+
+.primary-button:active,
+.ghost-button:active,
+.danger-button:active,
+.install-button:active,
+.toast-action:active,
+.icon-button:active,
+.month-nav:active,
+.rotation-entry:active,
+.text-button:active,
+.plan-row-start:active,
+.plan-row-record:active,
+.next-plan-edit:active,
+.next-plan-start:active,
+.next-plan-record:active,
+.timing-pause-button:active,
+.timing-stop-button:active,
+.add-day-button:active,
+.timing-option:active {
+  transform: scale(0.96);
+}
+
+.calendar-day:active {
+  background: var(--line-soft);
+}
+
+.calendar-day.is-selected:active {
+  background: var(--accent-deep);
+}
+
+.quick-card:active,
+.settlement-card:active,
+.week-glance:active,
+.missed-card:active {
+  transform: scale(0.985);
+}
+
+.record-row:active,
+.settings-row:active,
+.plan-row-main:active {
+  background: var(--hover-bg);
+}
+
+/* ---------- 页面切换：原生 View Transitions ---------- */
+
+html[data-vt-kind='nav']::view-transition-old(root),
+html[data-vt-kind='nav']::view-transition-new(root) {
+  animation: none;
+}
+
+html[data-vt-kind='nav']::view-transition-group(app-screen) {
+  animation-duration: var(--dur-sheet);
+}
+
+/* 先淡出旧页，再淡入新页：中间只隔纸色背景，避免两页文字叠在一起形成重影 */
+html[data-vt-kind='nav']::view-transition-old(app-screen) {
+  animation: vt-screen-out 0.12s var(--ease-exit) both;
+}
+
+html[data-vt-kind='nav']::view-transition-new(app-screen) {
+  animation: vt-screen-in 0.22s var(--ease-enter) 0.12s both;
+}
+
+html[data-vt-kind='nav'][data-nav-direction='back']::view-transition-old(app-screen) {
+  animation-name: vt-screen-out-back;
+}
+
+html[data-vt-kind='nav'][data-nav-direction='back']::view-transition-new(app-screen) {
+  animation-name: vt-screen-in-back;
+}
+
+/* 快照期间让导航指示器直接到位，否则会拍到动画起点，造成指示器落后 */
+html[data-vt-kind='nav'] .nav-active-pill {
+  transition: none;
+}
+
+html[data-vt-kind='nav'] .nav-item.is-active .nav-icon svg {
+  animation: none;
+}
+
+/* 主题切换：从点击位置圆形显影 */
+html[data-vt-kind='theme'][data-vt-origin='1']::view-transition-old(root) {
+  animation: none;
+}
+
+html[data-vt-kind='theme'][data-vt-origin='1']::view-transition-new(root) {
+  animation: theme-reveal 0.46s var(--ease-standard) both;
+}
+
+/* ---------- 新增关键帧 ---------- */
+
+@keyframes bar-grow {
+  from {
+    transform: scaleX(0);
+    opacity: 0.6;
+  }
+  to {
+    transform: scaleX(1);
+    opacity: 1;
+  }
+}
+
+@keyframes app-fade {
+  from {
+    opacity: 0;
+  }
+  to {
+    opacity: 1;
+  }
+}
+
+@keyframes bar-rise {
+  from {
+    transform: scaleY(0.12);
+    opacity: 0.35;
+  }
+  to {
+    transform: scaleY(1);
+    opacity: 1;
+  }
+}
+
+@keyframes spark-rise {
+  from {
+    transform: scaleY(0.08);
+    opacity: 0.3;
+  }
+  to {
+    transform: scaleY(1);
+    opacity: 1;
+  }
+}
+
+@keyframes goal-glow {
+  0%,
+  100% {
+    box-shadow: 0 0 0 0 rgba(216, 163, 59, 0);
+  }
+  40% {
+    box-shadow: 0 0 0 4px rgba(216, 163, 59, 0.18);
+  }
+}
+
+@keyframes pulse-soft {
+  0%,
+  100% {
+    box-shadow: 0 0 0 3px rgba(212, 90, 60, 0.16);
+  }
+  50% {
+    box-shadow: 0 0 0 6px rgba(212, 90, 60, 0.04);
+  }
+}
+
+@keyframes timer-dot-pulse {
+  0% {
+    box-shadow: 0 0 0 2px var(--nav-bg), 0 0 0 2px rgba(212, 90, 60, 0.45);
+  }
+  70% {
+    box-shadow: 0 0 0 2px var(--nav-bg), 0 0 0 6px rgba(212, 90, 60, 0);
+  }
+  100% {
+    box-shadow: 0 0 0 2px var(--nav-bg), 0 0 0 2px rgba(212, 90, 60, 0);
+  }
+}
+
+@keyframes nav-icon-pop {
+  0% {
+    transform: scale(0.86);
+  }
+  58% {
+    transform: scale(1.1);
+  }
+  100% {
+    transform: scale(1);
+  }
+}
+
+@keyframes list-rise {
+  from {
+    opacity: 0;
+    transform: translateY(8px);
+  }
+  to {
+    opacity: 1;
+    transform: translateY(0);
+  }
+}
+
+@keyframes calendar-next {
+  from {
+    opacity: 0;
+    transform: translate3d(16px, 0, 0);
+  }
+  to {
+    opacity: 1;
+    transform: translate3d(0, 0, 0);
+  }
+}
+
+@keyframes calendar-prev {
+  from {
+    opacity: 0;
+    transform: translate3d(-16px, 0, 0);
+  }
+  to {
+    opacity: 1;
+    transform: translate3d(0, 0, 0);
+  }
+}
+
+@keyframes dot-in {
+  from {
+    opacity: 0;
+    transform: scale(0.4);
+  }
+  to {
+    opacity: 1;
+    transform: scale(1);
+  }
+}
+
+@keyframes detail-in {
+  from {
+    opacity: 0;
+    transform: translateY(6px);
+  }
+  to {
+    opacity: 1;
+    transform: translateY(0);
+  }
+}
+
+@keyframes fade-slide-in {
+  from {
+    opacity: 0;
+    transform: translateY(4px);
+  }
+  to {
+    opacity: 1;
+    transform: translateY(0);
+  }
+}
+
+@keyframes focus-swap {
+  from {
+    opacity: 0.2;
+    transform: translateY(2px);
+  }
+  to {
+    opacity: 1;
+    transform: translateY(0);
+  }
+}
+
+@keyframes segment-pop {
+  0% {
+    transform: scale(0.94);
+  }
+  100% {
+    transform: scale(1);
+  }
+}
+
+@keyframes sheet-out {
+  from {
+    transform: translate3d(0, 0, 0);
+  }
+  to {
+    transform: translate3d(0, 100%, 0);
+  }
+}
+
+@keyframes dialog-out {
+  from {
+    opacity: 1;
+    transform: translateY(0) scale(1);
+  }
+  to {
+    opacity: 0;
+    transform: translateY(8px) scale(0.98);
+  }
+}
+
+@keyframes fade-out {
+  from {
+    opacity: 1;
+  }
+  to {
+    opacity: 0;
+  }
+}
+
+@keyframes toast-out {
+  from {
+    opacity: 1;
+    transform: translate(-50%, 0) scale(1);
+  }
+  to {
+    opacity: 0;
+    transform: translate(-50%, 7px) scale(0.96);
+  }
+}
+
+@keyframes toast-check {
+  from {
+    stroke-dashoffset: 24;
+  }
+  to {
+    stroke-dashoffset: 0;
+  }
+}
+
+@keyframes toast-life {
+  from {
+    transform: scaleX(1);
+  }
+  to {
+    transform: scaleX(0);
+  }
+}
+
+@keyframes vt-screen-in {
+  from {
+    opacity: 0;
+    transform: translate3d(14px, 0, 0);
+  }
+  to {
+    opacity: 1;
+    transform: translate3d(0, 0, 0);
+  }
+}
+
+@keyframes vt-screen-out {
+  from {
+    opacity: 1;
+    transform: translate3d(0, 0, 0);
+  }
+  to {
+    opacity: 0;
+    transform: translate3d(-10px, 0, 0);
+  }
+}
+
+@keyframes vt-screen-in-back {
+  from {
+    opacity: 0;
+    transform: translate3d(-14px, 0, 0);
+  }
+  to {
+    opacity: 1;
+    transform: translate3d(0, 0, 0);
+  }
+}
+
+@keyframes vt-screen-out-back {
+  from {
+    opacity: 1;
+    transform: translate3d(0, 0, 0);
+  }
+  to {
+    opacity: 0;
+    transform: translate3d(10px, 0, 0);
+  }
+}
+
+@keyframes theme-reveal {
+  from {
+    clip-path: circle(0px at var(--vt-x, 50%) var(--vt-y, 50%));
+  }
+  to {
+    clip-path: circle(var(--vt-r, 100vmax) at var(--vt-x, 50%) var(--vt-y, 50%));
+  }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .hero-pulse,
+  .nav-timer-dot {
+    animation: none;
+  }
+
+  html[data-vt-kind='nav']::view-transition-old(app-screen),
+  html[data-vt-kind='nav']::view-transition-new(app-screen),
+  html[data-vt-kind='theme'][data-vt-origin='1']::view-transition-new(root) {
+    animation: none;
+  }
+}
+
+/* ---------- 2.2 日期倍率与批量补记 ---------- */
+
+.day-rule-setting {
+  padding: 2px 12px 10px;
+}
+
+.day-rule-setting .reminder-head {
+  padding: 8px 0 2px;
+}
+
+.day-rule-row {
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+  padding-top: 10px;
+}
+
+.day-rule-label {
+  color: var(--ink-soft);
+  font-size: 10px;
+  font-weight: 650;
+  letter-spacing: 0.02em;
+}
+
+.segmented-control.day-rule-options {
+  grid-template-columns: repeat(5, 1fr);
+  background: var(--surface);
+}
+
+.holiday-block {
+  margin-top: 12px;
+  padding-top: 11px;
+  border-top: 1px dashed var(--line);
+}
+
+.holiday-head {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  color: var(--ink-soft);
+  font-size: 10px;
+  font-weight: 650;
+}
+
+.holiday-head small {
+  color: var(--muted);
+  font-weight: 500;
+  font-variant-numeric: tabular-nums;
+}
+
+.holiday-list {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 6px;
+  margin-top: 8px;
+}
+
+.holiday-chip {
+  display: inline-flex;
+  align-items: center;
+  gap: 5px;
+  padding: 4px 5px 4px 9px;
+  border: 1px solid var(--line);
+  border-radius: 999px;
+  background: var(--tint-base);
+  color: var(--ink);
+  font-size: 10px;
+}
+
+.holiday-chip small {
+  color: var(--muted);
+  font-variant-numeric: tabular-nums;
+}
+
+.holiday-chip button {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: 16px;
+  height: 16px;
+  border: 0;
+  border-radius: 50%;
+  background: transparent;
+  color: var(--muted);
+  cursor: pointer;
+  transition: background var(--dur-tap) ease, color var(--dur-tap) ease;
+}
+
+.holiday-chip button:hover {
+  background: var(--hover-bg);
+  color: var(--accent-deep);
+}
+
+.holiday-form {
+  display: grid;
+  grid-template-columns: minmax(0, 1.1fr) minmax(0, 1fr) auto;
+  gap: 6px;
+  margin-top: 9px;
+}
+
+.holiday-form input[type='date'],
+.holiday-form .text-input {
+  min-width: 0;
+  height: 34px;
+  padding: 0 8px;
+  border: 1px solid var(--line-strong);
+  border-radius: 10px;
+  background: var(--tint-base);
+  color: var(--ink);
+  font-family: inherit;
+  font-size: 10px;
+}
+
+.holiday-form .ghost-button {
+  height: 34px;
+  padding: 0 12px;
+  border-radius: 10px;
+  font-size: 10px;
+}
+
+.holiday-form .ghost-button:disabled {
+  opacity: 0.45;
+  cursor: not-allowed;
+}
+
+.day-rule-setting .field-hint {
+  margin: 8px 0 0;
+}
+
+/* 批量补记 */
+.batch-range {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+}
+
+.batch-date-input {
+  flex: 1 1 0;
+  min-width: 0;
+  height: 46px;
+  padding: 0 10px;
+  border: 1px solid var(--line-strong);
+  border-radius: 12px;
+  background: var(--tint-base);
+  color: var(--ink);
+  font-family: inherit;
+  font-size: 13px;
+  font-variant-numeric: tabular-nums;
+}
+
+.batch-auto-multiplier {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 10px;
+  padding: 10px 12px;
+  border: 1px solid var(--line);
+  border-radius: 12px;
+  background: var(--surface);
+}
+
+.batch-auto-multiplier > span {
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+  min-width: 0;
+}
+
+.batch-auto-multiplier strong {
+  color: var(--ink);
+  font-size: 11px;
+  font-weight: 650;
+}
+
+.batch-auto-multiplier small {
+  color: var(--muted);
+  font-size: 9px;
+}
+
+.batch-range-sep {
+  flex: none;
+  color: var(--muted);
+  font-size: 10px;
+}
+
+.batch-summary {
+  display: grid;
+  grid-template-columns: repeat(3, 1fr);
+  gap: 8px;
+  padding: 11px 13px;
+  border: 1px solid var(--line);
+  border-radius: var(--radius-md);
+  background: var(--surface);
+}
+
+.batch-summary div {
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+}
+
+.batch-summary span {
+  color: var(--muted);
+  font-size: 9px;
+}
+
+.batch-summary strong {
+  color: var(--ink);
+  font-family: var(--font-serif);
+  font-size: 17px;
+  font-weight: 600;
+  font-variant-numeric: tabular-nums;
+}
+
+.batch-summary strong small {
+  margin-right: 1px;
+  font-size: 10px;
+}
+
+.batch-weekdays {
+  display: grid;
+  grid-template-columns: repeat(7, 1fr);
+  gap: 4px;
+}
+
+.batch-weekdays button {
+  padding: 8px 0;
+  border: 1px solid var(--line);
+  border-radius: 10px;
+  background: var(--tint-base);
+  color: var(--muted);
+  font-size: 10px;
+  cursor: pointer;
+  transition: background var(--dur-tap) ease, color var(--dur-tap) ease,
+    border-color var(--dur-tap) ease;
+}
+
+.batch-weekdays button.is-active {
+  border-color: var(--btn-bg);
+  background: var(--btn-bg);
+  color: var(--btn-fg);
+  font-weight: 650;
+}
+
+.batch-note {
+  display: flex;
+  align-items: flex-start;
+  gap: 7px;
+  margin: 2px 0 0;
+  padding: 9px 11px;
+  border-radius: 11px;
+  background: var(--paper);
+  color: var(--muted);
+  font-size: 9px;
+  line-height: 1.55;
+}
+
+.batch-note.is-warning {
+  background: color-mix(in srgb, var(--gold) 14%, transparent);
+  color: var(--ink-soft);
+}
+
+.batch-note svg {
+  flex: none;
+  margin-top: 1px;
 }

@@ -4,4 +4,14 @@
     <string name="title_activity_main">工时账本</string>
     <string name="package_name">com.gongshi.ledger</string>
     <string name="custom_url_scheme">com.gongshi.ledger</string>
+
+    <!-- 2.2 桌面长按快捷方式 -->
+    <string name="shortcut_record_short">记一班</string>
+    <string name="shortcut_record_long">记下这一班的工时与收入</string>
+    <string name="shortcut_timing_short">打卡计时</string>
+    <string name="shortcut_timing_long">开始一次计时打卡</string>
+    <string name="shortcut_batch_short">批量补记</string>
+    <string name="shortcut_batch_long">一次补齐漏掉的班次</string>
+    <string name="shortcut_stats_short">本月统计</string>
+    <string name="shortcut_stats_long">查看本月收入与工时</string>
 </resources>

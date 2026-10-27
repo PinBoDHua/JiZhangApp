@@ -1,6 +1,8 @@
-import { useRef, useState, type TouchEvent as ReactTouchEvent } from 'react';
+import { useEffect, useRef, useState, type TouchEvent as ReactTouchEvent } from 'react';
 import type { PlannedShift, ShiftTemplate, WorkRecord } from '../types';
 import { isPlanMissed } from '../planStats';
+import { hapticTap } from '../feedback';
+import { useAnimatedNumber } from '../hooks/useAnimatedNumber';
 import {
   canStartPlan,
   daysInMonth,
@@ -51,6 +53,7 @@ interface CalendarProps {
   onEditRecord: (record: WorkRecord) => void;
   onAddRecord: (date: string) => void;
   onAddPlan: (date: string) => void;
+  onOpenBatch: (date: string) => void;
   onOpenRotation: (date: string) => void;
   onEditPlan: (plan: PlannedShift) => void;
   onStartPlan: (plan: PlannedShift) => void;
@@ -194,6 +197,7 @@ export function Calendar({
   onEditRecord,
   onAddRecord,
   onAddPlan,
+  onOpenBatch,
   onOpenRotation,
   onEditPlan,
   onStartPlan,
@@ -209,8 +213,16 @@ export function Calendar({
   const [selectedDate, setSelectedDate] = useState(
     focusRequest?.date ?? today,
   );
-  const touchStartRef = useRef<{ x: number; y: number } | null>(null);
+  const [monthMotion, setMonthMotion] = useState<'next' | 'prev' | null>(null);
+  const panelRef = useRef<HTMLElement>(null);
+  const touchStartRef = useRef<{
+    x: number;
+    y: number;
+    horizontal: boolean;
+  } | null>(null);
   const suppressClickRef = useRef(false);
+  const panelFrameRef = useRef<number | null>(null);
+  const panelTimerRef = useRef<number | null>(null);
 
   const isCurrentMonth =
     anchor.year === current.getFullYear() && anchor.monthIndex === current.getMonth();
@@ -259,9 +271,52 @@ export function Calendar({
     (sum, plan) => sum + earningsOf(plan),
     0,
   );
+  const shownMonthEarnings = useAnimatedNumber(
+    mode === 'records' ? totalEarnings : plannedEarnings,
+    { resetKey: `${anchor.year}-${anchor.monthIndex}-${mode}` },
+  );
+
+  useEffect(
+    () => () => {
+      if (panelFrameRef.current !== null) {
+        cancelAnimationFrame(panelFrameRef.current);
+      }
+      if (panelTimerRef.current !== null) {
+        window.clearTimeout(panelTimerRef.current);
+      }
+    },
+    [],
+  );
+
+  const resetPanelPosition = (animate: boolean) => {
+    const panel = panelRef.current;
+    if (!panel) return;
+    if (panelFrameRef.current !== null) {
+      cancelAnimationFrame(panelFrameRef.current);
+      panelFrameRef.current = null;
+    }
+    panel.classList.remove('is-swiping');
+    if (panelTimerRef.current !== null) {
+      window.clearTimeout(panelTimerRef.current);
+      panelTimerRef.current = null;
+    }
+    if (!animate) {
+      panel.style.transition = '';
+      panel.style.transform = '';
+      return;
+    }
+    panel.style.transition = 'transform 0.32s cubic-bezier(0.22, 1, 0.36, 1)';
+    panel.style.transform = '';
+    panelTimerRef.current = window.setTimeout(() => {
+      panelTimerRef.current = null;
+      panel.style.transition = '';
+    }, 340);
+  };
 
   const goMonth = (delta: number) => {
     const next = shiftMonth(anchor.year, anchor.monthIndex, delta);
+    setMonthMotion(delta > 0 ? 'next' : 'prev');
+    hapticTap();
     setAnchor(next);
     setSelectedDate(
       defaultDateForMonth(records, plans, next.year, next.monthIndex, current, today),
@@ -269,13 +324,51 @@ export function Calendar({
   };
 
   const returnToCurrent = () => {
+    const targetKey = monthKey(current.getFullYear(), current.getMonth());
+    setMonthMotion(
+      targetKey > monthKey(anchor.year, anchor.monthIndex) ? 'next' : 'prev',
+    );
+    hapticTap();
     setAnchor({ year: current.getFullYear(), monthIndex: current.getMonth() });
     setSelectedDate(today);
   };
 
   const handleTouchStart = (event: ReactTouchEvent) => {
     const touch = event.touches[0];
-    touchStartRef.current = { x: touch.clientX, y: touch.clientY };
+    touchStartRef.current = { x: touch.clientX, y: touch.clientY, horizontal: false };
+  };
+
+  const handleTouchMove = (event: ReactTouchEvent) => {
+    const start = touchStartRef.current;
+    const panel = panelRef.current;
+    if (!start || !panel) return;
+    const touch = event.touches[0];
+    const deltaX = touch.clientX - start.x;
+    const deltaY = touch.clientY - start.y;
+    if (!start.horizontal) {
+      if (Math.abs(deltaX) < 12 || Math.abs(deltaX) < Math.abs(deltaY) * 1.25) return;
+      start.horizontal = true;
+      panel.classList.add('is-swiping');
+    }
+    if (panelFrameRef.current !== null) cancelAnimationFrame(panelFrameRef.current);
+    panelFrameRef.current = requestAnimationFrame(() => {
+      panelFrameRef.current = null;
+      const offset = Math.max(-22, Math.min(22, deltaX * 0.3));
+      panel.style.transform = `translate3d(${offset}px, 0, 0)`;
+    });
+  };
+
+  const finishSwipe = (deltaX: number, horizontal: boolean) => {
+    if (horizontal) {
+      suppressClickRef.current = true;
+      window.setTimeout(() => {
+        suppressClickRef.current = false;
+      }, 380);
+      if (Math.abs(deltaX) >= 56) {
+        goMonth(deltaX < 0 ? 1 : -1);
+      }
+      resetPanelPosition(true);
+    }
   };
 
   const handleTouchEnd = (event: ReactTouchEvent) => {
@@ -283,14 +376,13 @@ export function Calendar({
     touchStartRef.current = null;
     if (!start) return;
     const touch = event.changedTouches[0];
-    const deltaX = touch.clientX - start.x;
-    const deltaY = touch.clientY - start.y;
-    if (Math.abs(deltaX) < 48 || Math.abs(deltaX) < Math.abs(deltaY) * 1.4) return;
-    goMonth(deltaX < 0 ? 1 : -1);
-    suppressClickRef.current = true;
-    window.setTimeout(() => {
-      suppressClickRef.current = false;
-    }, 350);
+    finishSwipe(touch.clientX - start.x, start.horizontal);
+  };
+
+  const handleTouchCancel = () => {
+    const start = touchStartRef.current;
+    touchStartRef.current = null;
+    finishSwipe(0, start?.horizontal ?? false);
   };
 
   const cells = Array.from({ length: cellCount }, (_, index) => {
@@ -361,7 +453,14 @@ export function Calendar({
             轮班表
           </button>
         ) : (
-          <span className="calendar-mode-hint">查看或补记班次</span>
+          <button
+            type="button"
+            className="rotation-entry"
+            onClick={() => onOpenBatch(selectedDate)}
+          >
+            <NotebookIcon size={13} />
+            批量补记
+          </button>
         )}
       </div>
 
@@ -379,10 +478,13 @@ export function Calendar({
       />
 
       <section
+        ref={panelRef}
         className="panel calendar-panel"
         aria-label="月度班次日历"
         onTouchStart={handleTouchStart}
+        onTouchMove={handleTouchMove}
         onTouchEnd={handleTouchEnd}
+        onTouchCancel={handleTouchCancel}
       >
         {mode === 'records' ? (
           <div className="calendar-summary">
@@ -390,7 +492,7 @@ export function Calendar({
               <span>当月收入</span>
               <strong>
                 <small>¥</small>
-                {formatMoney(totalEarnings)}
+                {formatMoney(shownMonthEarnings)}
               </strong>
             </div>
             <div className="calendar-summary-meta">
@@ -405,7 +507,7 @@ export function Calendar({
               <span>当月排班 · 预计</span>
               <strong>
                 <small>¥</small>
-                {formatMoney(plannedEarnings)}
+                {formatMoney(shownMonthEarnings)}
               </strong>
             </div>
             <div className="calendar-summary-meta">
@@ -424,7 +526,12 @@ export function Calendar({
           ))}
         </div>
 
-        <div className="calendar-grid">
+        <div
+          className={`calendar-grid${
+            monthMotion ? ` calendar-grid-${monthMotion}` : ''
+          }`}
+          key={`${anchor.year}-${anchor.monthIndex}`}
+        >
           {cells.map((cell, index) => {
             if (!cell) {
               return (
@@ -520,63 +627,65 @@ export function Calendar({
       </section>
 
       <section className="panel day-detail-panel" aria-label="选中日期的详情">
-        <div className="day-detail-head">
-          <div>
-            <h2>{formatDayHeading(selectedDate)}</h2>
-            <p>{detailCountText}</p>
+        <div className="day-detail-inner" key={`${selectedDate}-${mode}`}>
+          <div className="day-detail-head">
+            <div>
+              <h2>{formatDayHeading(selectedDate)}</h2>
+              <p>{detailCountText}</p>
+            </div>
+            {mode === 'records' && selectedRecords.length > 0 ? (
+              <span className="day-detail-total">¥{formatMoney(selectedEarnings)}</span>
+            ) : null}
+            {mode === 'plans' && selectedPlans.length > 0 ? (
+              <span className="day-detail-total">¥{formatMoney(selectedPlannedEarnings)}</span>
+            ) : null}
           </div>
-          {mode === 'records' && selectedRecords.length > 0 ? (
-            <span className="day-detail-total">¥{formatMoney(selectedEarnings)}</span>
-          ) : null}
-          {mode === 'plans' && selectedPlans.length > 0 ? (
-            <span className="day-detail-total">¥{formatMoney(selectedPlannedEarnings)}</span>
-          ) : null}
-        </div>
 
-        {mode === 'records' ? (
-          selectedRecords.length > 0 ? (
-            <div className="day-list day-detail-list">
-              {selectedRecords.map((record) => (
-                <RecordRow key={record.id} record={record} onClick={onEditRecord} />
+          {mode === 'records' ? (
+            selectedRecords.length > 0 ? (
+              <div className="day-list day-detail-list">
+                {selectedRecords.map((record) => (
+                  <RecordRow key={record.id} record={record} onClick={onEditRecord} />
+                ))}
+              </div>
+            ) : (
+              <p className="day-detail-hint">休息日也很重要，或者补记这一天的班次。</p>
+            )
+          ) : selectedPlans.length > 0 ? (
+            <div className="plan-list">
+              {selectedPlans.map((plan) => (
+                <PlanRow
+                  key={plan.id}
+                  plan={plan}
+                  current={current}
+                  timingActive={timingActive}
+                  activePlanId={activePlanId}
+                  reminderEnabled={reminderEnabled}
+                  onEdit={onEditPlan}
+                  onStart={onStartPlan}
+                  onRecord={onRecordPlan}
+                />
               ))}
             </div>
           ) : (
-            <p className="day-detail-hint">休息日也很重要，或者补记这一天的班次。</p>
-          )
-        ) : selectedPlans.length > 0 ? (
-          <div className="plan-list">
-            {selectedPlans.map((plan) => (
-              <PlanRow
-                key={plan.id}
-                plan={plan}
-                current={current}
-                timingActive={timingActive}
-                activePlanId={activePlanId}
-                reminderEnabled={reminderEnabled}
-                onEdit={onEditPlan}
-                onStart={onStartPlan}
-                onRecord={onRecordPlan}
-              />
-            ))}
-          </div>
-        ) : (
-          <p className="day-detail-hint">这一天还没有排班。提前排好，到点直接打卡。</p>
-        )}
+            <p className="day-detail-hint">这一天还没有排班。提前排好，到点直接打卡。</p>
+          )}
 
-        <button
-          type="button"
-          className="add-day-button"
-          onClick={() => (mode === 'records' ? onAddRecord(selectedDate) : onAddPlan(selectedDate))}
-        >
-          <PlusIcon size={16} />
-          {mode === 'records'
-            ? selectedRecords.length > 0
-              ? '再记一班'
-              : '记这一天'
-            : selectedPlans.length > 0
-              ? '再排一班'
-              : '排这一天'}
-        </button>
+          <button
+            type="button"
+            className="add-day-button"
+            onClick={() => (mode === 'records' ? onAddRecord(selectedDate) : onAddPlan(selectedDate))}
+          >
+            <PlusIcon size={16} />
+            {mode === 'records'
+              ? selectedRecords.length > 0
+                ? '再记一班'
+                : '记这一天'
+              : selectedPlans.length > 0
+                ? '再排一班'
+                : '排这一天'}
+          </button>
+        </div>
       </section>
     </div>
   );

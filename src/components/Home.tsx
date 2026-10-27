@@ -1,6 +1,7 @@
 import { useState, type CSSProperties } from 'react';
 import { findMissedPlans } from '../planStats';
 import { buildMonthForecast } from '../forecast';
+import { useAnimatedNumber } from '../hooks/useAnimatedNumber';
 import type { ActiveShift, PlannedShift, ShiftTemplate, WorkRecord } from '../types';
 import {
   addDaysISO,
@@ -199,6 +200,12 @@ export function Home({
         : weekDifference < 0
           ? ' is-down'
           : '';
+  const shownEarnings = useAnimatedNumber(totalEarnings, {
+    resetKey: monthKey(now.getFullYear(), now.getMonth()),
+  });
+  const shownWeekEarnings = useAnimatedNumber(weekEarnings, {
+    resetKey: weekRange.start,
+  });
 
   return (
     <div className="screen home-screen">
@@ -268,7 +275,7 @@ export function Home({
         </div>
         <p className="hero-amount">
           <span className="hero-currency">¥</span>
-          {formatMoney(totalEarnings)}
+          {formatMoney(shownEarnings)}
         </p>
         <div className="hero-stats">
           <div>
@@ -351,7 +358,7 @@ export function Home({
             </span>
             <span className="week-glance-amount">
               <small>¥</small>
-              {formatMoney(weekEarnings)}
+              {formatMoney(shownWeekEarnings)}
             </span>
             <span className="week-glance-meta">
               {formatHours(weekMinutes)}h
@@ -363,6 +370,7 @@ export function Home({
             {weekSeries.map((day, index) => (
               <span
                 key={day.date}
+                style={{ '--spark-index': index } as CSSProperties}
                 className={[
                   index === todayWeekIndex ? 'is-today' : '',
                   day.earnings === 0 ? 'is-empty' : '',
@@ -501,11 +509,15 @@ export function Home({
           </div>
         ) : (
           <div className="day-groups">
-            {shownGroups.map((group) => {
+            {shownGroups.map((group, groupIndex) => {
               const dayMinutes = group.items.reduce((sum, item) => sum + recordMinutes(item), 0);
               const dayEarnings = group.items.reduce((sum, item) => sum + earningsOf(item), 0);
               return (
-                <div className="day-group" key={group.date}>
+                <div
+                  className="day-group"
+                  key={group.date}
+                  style={{ '--reveal-index': Math.min(groupIndex, 8) } as CSSProperties}
+                >
                   <div className="day-header">
                     <div>
                       <span className="day-title">{formatDayHeading(group.date)}</span>

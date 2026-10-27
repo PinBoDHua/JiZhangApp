@@ -2,6 +2,7 @@ import { useCallback, useEffect, useRef, useState } from 'react';
 import { Capacitor } from '@capacitor/core';
 import { App as CapacitorApp } from '@capacitor/app';
 import { BottomNav } from './components/BottomNav';
+import { BatchRecordSheet } from './components/BatchRecordSheet';
 import { Calendar, type CalendarMode } from './components/Calendar';
 import { ConfirmDialog } from './components/ConfirmDialog';
 import { EndTimingSheet } from './components/EndTimingSheet';
@@ -19,16 +20,24 @@ import { TemplateSheet, type TemplateInput } from './components/TemplateSheet';
 import { Toast } from './components/Toast';
 import { useAppData } from './hooks/useAppData';
 import { useInstallPrompt } from './hooks/useInstallPrompt';
+import { useIsomorphicLayoutEffect } from './hooks/useIsomorphicLayoutEffect';
 import { useReminderSync } from './hooks/useReminderSync';
 import { useTheme } from './hooks/useTheme';
 import { useToast } from './hooks/useToast';
+import { hapticImpact, hapticSuccess, hapticTap } from './feedback';
+import { navDirection, prefersReducedMotion, runScreenTransition, runThemeTransition } from './motion';
+import { SheetMotionContext } from './sheetMotion';
 import { exportFile } from './native';
 import { restorePendingPlan, toPlanHistoryEntry } from './planStats';
 import { normalizeReminderLead } from './reminders';
 import type { RotationShift } from './rotation';
+import type { RecordDraft } from './batch';
 import { buildBackup, parseBackup, STORAGE_ERROR_EVENT } from './storage';
+import { parseCsvRecords } from './csv';
+import { parseAppAction, type AppShortcut } from './shortcuts';
 import type {
   ActiveShift,
+  DayPayRule,
   MonthlySettlement,
   OvertimeRule,
   PlanHistoryStatus,
@@ -73,6 +82,7 @@ type SheetState =
       date?: string;
     }
   | { kind: 'plan'; plan?: PlannedShift; date?: string }
+  | { kind: 'batch'; date?: string }
   | { kind: 'rotation'; date?: string }
   | { kind: 'missed' }
   | { kind: 'template'; template?: ShiftTemplate }
@@ -102,7 +112,7 @@ export default function App() {
     planHistory,
     setPlanHistory,
   } = useAppData();
-  const { toast, setToast, notify, notifyWithAction } = useToast();
+  const { toast, dismissToast, notify, notifyWithAction } = useToast();
   const resolvedTheme = useTheme(preferences.theme);
   const { installAvailable, isStandalone, install } = useInstallPrompt();
   const [calendarFocus, setCalendarFocus] = useState<{
@@ -113,26 +123,127 @@ export default function App() {
   const [statsPeriod, setStatsPeriod] = useState<StatsPeriod>('month');
   const [calendarMode, setCalendarMode] = useState<CalendarMode>('records');
   const [sheet, setSheet] = useState<SheetState | null>(null);
+  const [sheetClosing, setSheetClosing] = useState(false);
   const [confirm, setConfirm] = useState<ConfirmState | null>(null);
   const mainRef = useRef<HTMLElement>(null);
+  const sheetCloseTimerRef = useRef<number | null>(null);
+  const handledLaunchUrl = useRef<string | null>(null);
   const latestRecord = findLatestRecord(records);
   const latestTemplate = latestRecord?.templateId
     ? templates.find((template) => template.id === latestRecord.templateId)
     : undefined;
   const defaultTemplate = latestTemplate ?? templates[0] ?? null;
-  const goToTab = useCallback((next: Tab) => {
-    if (next !== 'calendar') setCalendarFocus(null);
-    setTab(next);
-  }, []);
+  const goToTab = useCallback(
+    (next: Tab) => {
+      if (next === tab) return;
+      hapticTap();
+      runScreenTransition(() => {
+        if (next !== 'calendar') setCalendarFocus(null);
+        setTab(next);
+      }, navDirection(tab, next));
+    },
+    [tab],
+  );
+
+  /** 快捷方式统一入口：PWA 的 ?action= 与 Android 的 gongshi:// 都走这里 */
+  const openAppShortcut = useCallback(
+    (action: AppShortcut) => {
+      if (action === 'record') {
+        setSheet({ kind: 'record', template: defaultTemplate, date: todayISO() });
+      } else if (action === 'timing') {
+        setSheet({ kind: 'startTiming' });
+      } else if (action === 'batch') {
+        setSheet({ kind: 'batch' });
+      } else {
+        setStatsPeriod('month');
+        goToTab('stats');
+      }
+    },
+    [defaultTemplate, goToTab],
+  );
+
+  useEffect(() => {
+    const initial = parseAppAction(`${window.location.search}${window.location.hash}`);
+    let timer: number | null = null;
+    if (initial) {
+      // 先清掉 query，避免依赖变化重跑时重复打开
+      window.history.replaceState(null, '', window.location.pathname);
+      // 延后一帧执行，等首次渲染和默认模板就绪后再打开浮层
+      timer = window.setTimeout(() => openAppShortcut(initial), 0);
+    }
+    const clearInitial = () => {
+      if (timer !== null) window.clearTimeout(timer);
+    };
+    if (!Capacitor.isNativePlatform()) return clearInitial;
+    let disposed = false;
+    let remove: (() => void) | undefined;
+    // 冷启动：快捷方式通过 launch intent 进入时，App 插件不一定补发 appUrlOpen
+    void CapacitorApp.getLaunchUrl()
+      .then((result) => {
+        if (!result?.url || handledLaunchUrl.current === result.url) return;
+        handledLaunchUrl.current = result.url;
+        const action = parseAppAction(result.url);
+        if (action) openAppShortcut(action);
+      })
+      .catch(() => {
+        // 没有 launch URL 时插件可能直接 reject，忽略即可
+      });
+    void CapacitorApp.addListener('appUrlOpen', (event) => {
+      const action = parseAppAction(event.url);
+      if (action) openAppShortcut(action);
+    }).then((handle) => {
+      remove = () => void handle.remove();
+      if (disposed) remove();
+    });
+    return () => {
+      clearInitial();
+      disposed = true;
+      remove?.();
+    };
+  }, [openAppShortcut]);
+
+  /** 浮层统一先播 220ms 退场，再真正卸载；减少动态效果时立即关闭。 */  const closeSheet = useCallback(() => {
+    if (!sheet || sheetCloseTimerRef.current !== null) return;
+    if (prefersReducedMotion()) {
+      setSheet(null);
+      return;
+    }
+    const closingTarget = sheet;
+    setSheetClosing(true);
+    sheetCloseTimerRef.current = window.setTimeout(() => {
+      sheetCloseTimerRef.current = null;
+      setSheet((current) => (current === closingTarget ? null : current));
+      setSheetClosing(false);
+    }, 220);
+  }, [sheet]);
+
+  // 退场动画还没结束就打开了新浮层时，取消上一次的卸载，避免新浮层被误关
+  useEffect(() => {
+    if (!sheet || sheetCloseTimerRef.current === null) return;
+    window.clearTimeout(sheetCloseTimerRef.current);
+    sheetCloseTimerRef.current = null;
+    setSheetClosing(false);
+  }, [sheet]);
+
+  useEffect(
+    () => () => {
+      if (sheetCloseTimerRef.current !== null) {
+        window.clearTimeout(sheetCloseTimerRef.current);
+      }
+    },
+    [],
+  );
 
   const openPlanFromNotification = useCallback(
     (date: string) => {
-      setSheet(null);
-      goToTab('calendar');
-      setCalendarMode('plans');
-      setCalendarFocus({ date, token: Date.now() });
+      runScreenTransition(() => {
+        setSheet(null);
+        setCalendarMode('plans');
+        setCalendarFocus({ date, token: Date.now() });
+        setTab('calendar');
+      }, navDirection(tab, 'calendar'));
     },
-    [goToTab],
+    [tab],
   );
 
   const {
@@ -156,7 +267,7 @@ export default function App() {
         return;
       }
       if (sheet) {
-        setSheet(null);
+        closeSheet();
         return;
       }
       if (tab !== 'home') {
@@ -172,7 +283,7 @@ export default function App() {
       disposed = true;
       remove?.();
     };
-  }, [confirm, sheet, tab, goToTab]);
+  }, [confirm, sheet, tab, goToTab, closeSheet]);
 
   useEffect(() => {
     document.title = activeShift
@@ -182,7 +293,7 @@ export default function App() {
       : '工时账本 · 班次与收入记录';
   }, [activeShift]);
 
-  useEffect(() => {
+  useIsomorphicLayoutEffect(() => {
     mainRef.current?.scrollTo({ top: 0 });
   }, [tab]);
 
@@ -194,7 +305,6 @@ export default function App() {
     return () => window.removeEventListener(STORAGE_ERROR_EVENT, onStorageError);
   }, [notify]);
 
-  const closeSheet = useCallback(() => setSheet(null), []);
   const archivePlan = useCallback(
     (plan: PlannedShift, status: PlanHistoryStatus, recordId: string | null) => {
       const entry = toPlanHistoryEntry(plan, status, recordId);
@@ -239,6 +349,10 @@ export default function App() {
     setSheet({ kind: 'rotation', date });
   };
 
+  const openBatch = (date = toISODate(new Date())) => {
+    setSheet({ kind: 'batch', date });
+  };
+
   const openPlan = (plan: PlannedShift) => {
     setSheet({ kind: 'plan', plan });
   };
@@ -269,7 +383,8 @@ export default function App() {
         a.monthKey.localeCompare(b.monthKey),
       ),
     );
-    setSheet(null);
+    hapticSuccess();
+    closeSheet();
     notify('工资结算已保存');
   };
 
@@ -306,12 +421,19 @@ export default function App() {
 
   const handleSaveGoal = (goal: number) => {
     setPreferences((prev) => ({ ...prev, monthlyGoal: goal }));
-    setSheet(null);
+    hapticSuccess();
+    closeSheet();
     notify(goal > 0 ? '月收入目标已更新' : '已清除月收入目标');
   };
 
-  const handleThemeChange = (theme: ThemePreference) => {
-    setPreferences((prev) => ({ ...prev, theme }));
+  const handleDayRuleChange = (dayRule: DayPayRule) => {
+    setPreferences((prev) => ({ ...prev, dayRule }));
+  };
+
+  const handleThemeChange = (theme: ThemePreference, origin?: { x: number; y: number }) => {
+    runThemeTransition(() => {
+      setPreferences((prev) => ({ ...prev, theme }));
+    }, origin);
   };
 
   const handleToggleReminder = async () => {
@@ -385,7 +507,8 @@ export default function App() {
             : '排班已保存',
       );
     }
-    setSheet(null);
+    hapticSuccess();
+    closeSheet();
   };
 
   const handleGenerateRotation = (entries: RotationShift[]) => {
@@ -416,10 +539,51 @@ export default function App() {
     }
 
     setPlans((prev) => sortPlans([...prev, ...created]));
-    setSheet(null);
+    hapticSuccess();
+    closeSheet();
     const createdIds = new Set(created.map((plan) => plan.id));
     notifyWithAction(`已生成 ${created.length} 个排班`, '撤销', () => {
       setPlans((prev) => prev.filter((plan) => !createdIds.has(plan.id)));
+    });
+  };
+
+  const handleGenerateBatch = (drafts: RecordDraft[], planIds: Record<string, string>) => {
+    const timestamp = Date.now();
+    const created: WorkRecord[] = drafts.map((draft) => ({
+      ...draft,
+      id: uid(),
+      createdAt: timestamp,
+      updatedAt: timestamp,
+    }));
+    const recordIds = new Set(created.map((record) => record.id));
+    const planSnapshot = plans;
+    const historySnapshot = planHistory;
+    const archived = Object.entries(planIds)
+      .map(([date, planId]) => {
+        const plan = plans.find((item) => item.id === planId);
+        if (!plan) return null;
+        const record = created.find((item) => item.date === date);
+        return { plan, recordId: record?.id ?? null };
+      })
+      .filter((item): item is { plan: PlannedShift; recordId: string | null } => item !== null);
+
+    setRecords((prev) => [...created, ...prev]);
+    if (archived.length > 0) {
+      const archivedIds = new Set(archived.map((item) => item.plan.id));
+      setPlans((prev) => prev.filter((plan) => !archivedIds.has(plan.id)));
+      setPlanHistory((prev) => [
+        ...prev,
+        ...archived.map((item) =>
+          toPlanHistoryEntry(item.plan, 'completed', item.recordId),
+        ),
+      ]);
+    }
+    hapticSuccess();
+    closeSheet();
+    notifyWithAction(`已补记 ${created.length} 班`, '撤销', () => {
+      setRecords((prev) => prev.filter((record) => !recordIds.has(record.id)));
+      setPlans(planSnapshot);
+      setPlanHistory(historySnapshot);
     });
   };
 
@@ -433,7 +597,8 @@ export default function App() {
       danger: true,
       onConfirm: () => {
         setPlans((prev) => prev.filter((plan) => plan.id !== target.id));
-        setSheet(null);
+        hapticImpact();
+        closeSheet();
         setConfirm(null);
         notify('排班已删除');
       },
@@ -442,13 +607,13 @@ export default function App() {
 
   const handleStartPlan = (plan: PlannedShift) => {
     if (activeShift) {
-      setSheet(null);
+      closeSheet();
       notify('已有计时进行中，先结束或放弃当前打卡');
       return;
     }
     const now = new Date();
     if (!canStartPlan(plan, now)) {
-      setSheet(null);
+      closeSheet();
       notify('还没到排班日期，当天再来打卡');
       return;
     }
@@ -468,7 +633,8 @@ export default function App() {
       note: plan.note,
       overtime: plan.overtime ?? null,
     });
-    setSheet(null);
+    hapticSuccess();
+    closeSheet();
     notify(`${plan.shiftName} 打卡已开始`);
   };
 
@@ -478,7 +644,7 @@ export default function App() {
 
   const handleStartTiming = (template: ShiftTemplate) => {
     if (activeShift) {
-      setSheet(null);
+      closeSheet();
       notify('已有计时进行中，先结束或放弃当前打卡');
       return;
     }
@@ -499,7 +665,8 @@ export default function App() {
       note: '',
       overtime: template.overtime ?? null,
     });
-    setSheet(null);
+    hapticSuccess();
+    closeSheet();
     notify('打卡已开始');
   };
 
@@ -587,7 +754,8 @@ export default function App() {
       archivePlan(sourcePlan, 'completed', recordId);
     }
     setActiveShift(null);
-    setSheet(null);
+    hapticSuccess();
+    closeSheet();
     notify(sourcePlan ? '已结束打卡，排班已完成' : '已结束打卡，记录已保存');
   };
 
@@ -602,6 +770,7 @@ export default function App() {
       onConfirm: () => {
         setActiveShift(null);
         setConfirm(null);
+        hapticImpact();
         notify('已放弃这次计时');
       },
     });
@@ -630,7 +799,8 @@ export default function App() {
       }
       notify(sourcePlan ? '排班已完成，记录已保存' : '已记下一班');
     }
-    setSheet(null);
+    hapticSuccess();
+    closeSheet();
   };
 
   const handleSaveTemplate = (input: TemplateInput) => {
@@ -645,7 +815,8 @@ export default function App() {
       setTemplates((prev) => [...prev, { ...input, id: uid() }]);
       notify('班次已添加');
     }
-    setSheet(null);
+    hapticSuccess();
+    closeSheet();
   };
 
   const requestDeleteTemplate = () => {
@@ -658,7 +829,8 @@ export default function App() {
       danger: true,
       onConfirm: () => {
         setTemplates((prev) => prev.filter((template) => template.id !== target.id));
-        setSheet(null);
+        hapticImpact();
+        closeSheet();
         setConfirm(null);
         notify('班次已删除');
       },
@@ -676,7 +848,8 @@ export default function App() {
         sortPlans([...prev.filter((plan) => plan.id !== linkedHistory.id), restorePendingPlan(linkedHistory)]),
       );
     }
-    setSheet(null);
+    hapticImpact();
+    closeSheet();
     notifyWithAction(
       linkedHistory ? '记录已删除，排班已恢复' : '记录已删除',
       '撤销',
@@ -705,6 +878,7 @@ export default function App() {
         theme: preferences.theme,
         reminderEnabled: preferences.reminderEnabled,
         reminderLeadMinutes: preferences.reminderLeadMinutes,
+        dayRule: preferences.dayRule,
       },
       settlements,
       plans,
@@ -789,6 +963,7 @@ export default function App() {
               ...(imported.reminderLeadMinutes !== undefined
                 ? { reminderLeadMinutes: imported.reminderLeadMinutes }
                 : {}),
+              ...(imported.dayRule ? { dayRule: imported.dayRule } : {}),
             }));
           }
           setSettlements(backup.settlements ?? []);
@@ -808,6 +983,62 @@ export default function App() {
       });
     } catch (error) {
       notify(error instanceof Error ? error.message : '导入失败，请检查文件');
+    }
+  };
+
+  const handleImportCsv = async (file: File) => {
+    if (file.size > 5 * 1024 * 1024) {
+      notify('文件太大，请选择 CSV 表格');
+      return;
+    }
+    try {
+      const result = parseCsvRecords(await file.text(), {
+        records,
+        templates,
+        dayRule: preferences.dayRule,
+      });
+      if (result.records.length === 0) {
+        notify(
+          result.invalid > 0
+            ? `没有可导入的行（${result.invalid} 行格式有误）`
+            : result.skipped > 0
+              ? '这些记录都已经存在'
+              : '表格里没有数据',
+        );
+        return;
+      }
+      const detail = [
+        result.skipped > 0 ? `跳过 ${result.skipped} 条已存在` : '',
+        result.invalid > 0 ? `${result.invalid} 行格式有误` : '',
+        result.errors[0] ?? '',
+      ]
+        .filter(Boolean)
+        .join('；');
+      setConfirm({
+        title: `导入 ${result.records.length} 条记录？`,
+        message: `共读取 ${result.total} 行，将追加到现有记录，不影响已有数据${
+          detail ? `。${detail}` : ''
+        }。导入后可在提示条里撤销。`,
+        confirmLabel: '导入',
+        onConfirm: () => {
+          const timestamp = Date.now();
+          const created: WorkRecord[] = result.records.map((draft) => ({
+            ...draft,
+            id: uid(),
+            createdAt: timestamp,
+            updatedAt: timestamp,
+          }));
+          const snapshot = records;
+          setRecords((prev) => [...created, ...prev]);
+          setConfirm(null);
+          goToTab('home');
+          notifyWithAction(`已导入 ${created.length} 条记录`, '撤销', () => {
+            setRecords(snapshot);
+          });
+        },
+      });
+    } catch (error) {
+      notify(error instanceof Error ? error.message : '表格解析失败，请检查文件');
     }
   };
 
@@ -879,6 +1110,7 @@ export default function App() {
               onEditRecord={(record) => setSheet({ kind: 'record', record })}
               onAddRecord={(date) => openNewRecord(defaultTemplate, date)}
               onAddPlan={openNewPlan}
+              onOpenBatch={openBatch}
               onOpenRotation={openRotation}
               onEditPlan={openPlan}
               onStartPlan={handleStartPlan}
@@ -908,9 +1140,11 @@ export default function App() {
               theme={preferences.theme}
               resolvedTheme={resolvedTheme}
               lastBackupAt={preferences.lastBackupAt}
+              dayRule={preferences.dayRule}
               onAddTemplate={() => openTemplate()}
               onEditTemplate={(template) => openTemplate(template)}
               onEditGoal={() => setSheet({ kind: 'goal' })}
+              onDayRuleChange={handleDayRuleChange}
               onThemeChange={handleThemeChange}
               reminder={{
                 ...reminderStatus,
@@ -923,6 +1157,7 @@ export default function App() {
               onExportJson={handleExportJson}
               onExportCsv={handleExportCsv}
               onImportFile={handleImportFile}
+              onImportCsv={handleImportCsv}
               onClearRecords={requestClearRecords}
               installAvailable={installAvailable}
               onInstall={install}
@@ -939,123 +1174,142 @@ export default function App() {
         onChange={goToTab}
       />
 
-      {sheet?.kind === 'record' ? (
-        <RecordSheet
-          key={
-            sheet.record?.id ??
-            sheet.plan?.id ??
-            `new-${sheet.template?.id ?? 'custom'}-${sheet.date ?? todayISO()}`
-          }
-          templates={templates}
-          record={sheet.record}
-          plan={sheet.plan}
-          template={sheet.template}
-          initialDate={sheet.date}
-          recentRecord={sheet.record || sheet.plan ? undefined : latestRecord}
-          onClose={closeSheet}
-          onSave={handleSaveRecord}
-          onDelete={sheet.record ? handleDeleteRecord : undefined}
-          escapeDisabled={Boolean(confirm)}
-        />
-      ) : null}
+      <SheetMotionContext.Provider value={sheetClosing}>
+        {sheet?.kind === 'record' ? (
+          <RecordSheet
+            key={
+              sheet.record?.id ??
+              sheet.plan?.id ??
+              `new-${sheet.template?.id ?? 'custom'}-${sheet.date ?? todayISO()}`
+            }
+            templates={templates}
+            record={sheet.record}
+            plan={sheet.plan}
+            template={sheet.template}
+            initialDate={sheet.date}
+            recentRecord={sheet.record || sheet.plan ? undefined : latestRecord}
+            dayRule={preferences.dayRule}
+            onClose={closeSheet}
+            onSave={handleSaveRecord}
+            onDelete={sheet.record ? handleDeleteRecord : undefined}
+            escapeDisabled={Boolean(confirm)}
+          />
+        ) : null}
 
-      {sheet?.kind === 'plan' ? (
-        <PlanSheet
-          key={sheet.plan?.id ?? `new-plan-${sheet.date ?? todayISO()}`}
-          templates={templates}
-          plan={sheet.plan}
-          initialDate={sheet.date}
-          defaultTemplate={defaultTemplate}
-          reminderAvailable={reminderStatus.supported}
-          globalReminderEnabled={preferences.reminderEnabled}
-          globalReminderLeadMinutes={preferences.reminderLeadMinutes}
-          onClose={closeSheet}
-          onSave={handleSavePlan}
-          onDelete={sheet.plan ? requestDeletePlan : undefined}
-          escapeDisabled={Boolean(confirm)}
-        />
-      ) : null}
+        {sheet?.kind === 'plan' ? (
+          <PlanSheet
+            key={sheet.plan?.id ?? `new-plan-${sheet.date ?? todayISO()}`}
+            templates={templates}
+            plan={sheet.plan}
+            initialDate={sheet.date}
+            defaultTemplate={defaultTemplate}
+            dayRule={preferences.dayRule}
+            reminderAvailable={reminderStatus.supported}
+            globalReminderEnabled={preferences.reminderEnabled}
+            globalReminderLeadMinutes={preferences.reminderLeadMinutes}
+            onClose={closeSheet}
+            onSave={handleSavePlan}
+            onDelete={sheet.plan ? requestDeletePlan : undefined}
+            escapeDisabled={Boolean(confirm)}
+          />
+        ) : null}
 
-      {sheet?.kind === 'rotation' ? (
-        <RotationSheet
-          key={`rotation-${sheet.date ?? todayISO()}`}
-          templates={templates}
-          plans={plans}
-          initialDate={sheet.date}
-          onClose={closeSheet}
-          onGenerate={handleGenerateRotation}
-          escapeDisabled={Boolean(confirm)}
-        />
-      ) : null}
+        {sheet?.kind === 'batch' ? (
+          <BatchRecordSheet
+            key={`batch-${sheet.date ?? todayISO()}`}
+            templates={templates}
+            records={records}
+            plans={plans}
+            defaultTemplate={defaultTemplate}
+            initialDate={sheet.date}
+            dayRule={preferences.dayRule}
+            onClose={closeSheet}
+            onGenerate={handleGenerateBatch}
+            escapeDisabled={Boolean(confirm)}
+          />
+        ) : null}
 
-      {sheet?.kind === 'missed' ? (
-        <MissedPlansSheet
-          plans={plans}
-          records={records}
-          activePlanId={activeShift?.sourcePlanId ?? null}
-          onClose={closeSheet}
-          onRecord={handleRecordPlan}
-          onSkip={requestSkipPlan}
-          escapeDisabled={Boolean(confirm)}
-        />
-      ) : null}
+        {sheet?.kind === 'rotation' ? (
+          <RotationSheet
+            key={`rotation-${sheet.date ?? todayISO()}`}
+            templates={templates}
+            plans={plans}
+            initialDate={sheet.date}
+            onClose={closeSheet}
+            onGenerate={handleGenerateRotation}
+            escapeDisabled={Boolean(confirm)}
+          />
+        ) : null}
 
-      {sheet?.kind === 'template' ? (
-        <TemplateSheet
-          key={sheet.template?.id ?? 'new-template'}
-          template={sheet.template}
-          onClose={closeSheet}
-          onSave={handleSaveTemplate}
-          onDelete={sheet.template ? requestDeleteTemplate : undefined}
-          escapeDisabled={Boolean(confirm)}
-        />
-      ) : null}
+        {sheet?.kind === 'missed' ? (
+          <MissedPlansSheet
+            plans={plans}
+            records={records}
+            activePlanId={activeShift?.sourcePlanId ?? null}
+            onClose={closeSheet}
+            onRecord={handleRecordPlan}
+            onSkip={requestSkipPlan}
+            escapeDisabled={Boolean(confirm)}
+          />
+        ) : null}
 
-      {sheet?.kind === 'goal' ? (
-        <GoalSheet
-          goal={preferences.monthlyGoal}
-          onClose={closeSheet}
-          onSave={handleSaveGoal}
-          escapeDisabled={Boolean(confirm)}
-        />
-      ) : null}
+        {sheet?.kind === 'template' ? (
+          <TemplateSheet
+            key={sheet.template?.id ?? 'new-template'}
+            template={sheet.template}
+            onClose={closeSheet}
+            onSave={handleSaveTemplate}
+            onDelete={sheet.template ? requestDeleteTemplate : undefined}
+            escapeDisabled={Boolean(confirm)}
+          />
+        ) : null}
 
-      {sheet?.kind === 'startTiming' ? (
-        <StartTimingSheet
-          templates={templates}
-          defaultTemplate={defaultTemplate}
-          onClose={closeSheet}
-          onStart={handleStartTiming}
-          escapeDisabled={Boolean(confirm)}
-        />
-      ) : null}
+        {sheet?.kind === 'goal' ? (
+          <GoalSheet
+            goal={preferences.monthlyGoal}
+            onClose={closeSheet}
+            onSave={handleSaveGoal}
+            escapeDisabled={Boolean(confirm)}
+          />
+        ) : null}
 
-      {sheet?.kind === 'endTiming' ? (
-        <EndTimingSheet
-          shift={sheet.shift}
-          endTime={sheet.endTime}
-          endAt={sheet.endAt}
-          onClose={closeSheet}
-          onSave={handleSaveTimingEnd}
-          escapeDisabled={Boolean(confirm)}
-        />
-      ) : null}
+        {sheet?.kind === 'startTiming' ? (
+          <StartTimingSheet
+            templates={templates}
+            defaultTemplate={defaultTemplate}
+            onClose={closeSheet}
+            onStart={handleStartTiming}
+            escapeDisabled={Boolean(confirm)}
+          />
+        ) : null}
 
-      {sheet?.kind === 'settlement' ? (
-        <SettlementSheet
-          monthLabel={sheet.context.monthLabel}
-          baseEarnings={sheet.context.baseEarnings}
-          baseMinutes={sheet.context.baseMinutes}
-          workedDays={sheet.context.workedDays}
-          overtimeMinutes={sheet.context.overtimeMinutes}
-          overtimeEarnings={sheet.context.overtimeEarnings}
-          settlement={sheet.settlement}
-          onClose={closeSheet}
-          onSave={handleSaveSettlement}
-          onShare={handleSharePayslip}
-          escapeDisabled={Boolean(confirm)}
-        />
-      ) : null}
+        {sheet?.kind === 'endTiming' ? (
+          <EndTimingSheet
+            shift={sheet.shift}
+            endTime={sheet.endTime}
+            endAt={sheet.endAt}
+            onClose={closeSheet}
+            onSave={handleSaveTimingEnd}
+            escapeDisabled={Boolean(confirm)}
+          />
+        ) : null}
+
+        {sheet?.kind === 'settlement' ? (
+          <SettlementSheet
+            monthLabel={sheet.context.monthLabel}
+            baseEarnings={sheet.context.baseEarnings}
+            baseMinutes={sheet.context.baseMinutes}
+            workedDays={sheet.context.workedDays}
+            overtimeMinutes={sheet.context.overtimeMinutes}
+            overtimeEarnings={sheet.context.overtimeEarnings}
+            settlement={sheet.settlement}
+            onClose={closeSheet}
+            onSave={handleSaveSettlement}
+            onShare={handleSharePayslip}
+            escapeDisabled={Boolean(confirm)}
+          />
+        ) : null}
+      </SheetMotionContext.Provider>
 
       {confirm ? (
         <ConfirmDialog
@@ -1073,11 +1327,14 @@ export default function App() {
           key={toast.id}
           message={toast.message}
           actionLabel={toast.actionLabel}
+          leaving={toast.leaving}
+          duration={toast.actionLabel ? 6000 : 2600}
+          enterDelay={sheetClosing ? 220 : 0}
           onAction={
             toast.onAction
               ? () => {
                   const action = toast.onAction;
-                  setToast(null);
+                  dismissToast();
                   action?.();
                 }
               : undefined

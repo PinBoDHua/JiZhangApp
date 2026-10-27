@@ -123,12 +123,43 @@ export type StatsPeriod = 'week' | 'month' | 'year';
 
 export type ThemePreference = 'system' | 'light' | 'dark';
 
+/**
+ * 节假日：只存日期与名称，倍率由规则统一给出。
+ * 日期使用 YYYY-MM-DD，和记录/排班同一种格式。
+ */
+export interface HolidayDate {
+  date: string;
+  label: string;
+}
+
+/**
+ * 周末与节假日的自动倍率规则（2.2）。
+ * 只在新建记录、排班或批量补记时带出倍数，落库后仍写入记录快照，
+ * 因此修改规则不会改变历史金额。
+ */
+export interface DayPayRule {
+  enabled: boolean;
+  /** 周六、周日的倍数 */
+  weekendMultiplier: number;
+  /** 节假日日期的倍数 */
+  holidayMultiplier: number;
+  holidays: HolidayDate[];
+}
+
+export const DEFAULT_DAY_PAY_RULE: DayPayRule = {
+  enabled: false,
+  weekendMultiplier: 2,
+  holidayMultiplier: 3,
+  holidays: [],
+};
+
 export interface AppPreferences {
   monthlyGoal: number;
   theme: ThemePreference;
   lastBackupAt: number | null;
   reminderEnabled: boolean;
   reminderLeadMinutes: number;
+  dayRule: DayPayRule;
 }
 
 export const DEFAULT_PREFERENCES: AppPreferences = {
@@ -137,16 +168,19 @@ export const DEFAULT_PREFERENCES: AppPreferences = {
   lastBackupAt: null,
   reminderEnabled: false,
   reminderLeadMinutes: 60,
+  dayRule: DEFAULT_DAY_PAY_RULE,
 };
 
 export type BackupPreferences = Pick<AppPreferences, 'monthlyGoal' | 'theme'> & {
   reminderEnabled?: boolean;
   reminderLeadMinutes?: number;
+  dayRule?: DayPayRule;
 };
 
 export interface BackupData {
   app: 'shift-ledger';
-  version: 2;
+  /** 3 = 2.2 备份，额外包含日期倍率规则；1.x / 2.x 备份仍可导入 */
+  version: 3;
   appVersion?: string;
   exportedAt: string;
   templates: ShiftTemplate[];

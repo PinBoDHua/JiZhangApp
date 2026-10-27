@@ -1,5 +1,12 @@
-import { useRef, type CSSProperties } from 'react';
-import type { ShiftTemplate, ThemePreference } from '../types';
+import { useRef, useState, type CSSProperties } from 'react';
+import type { DayPayRule, ShiftTemplate, ThemePreference } from '../types';
+import {
+  DAY_MULTIPLIER_OPTIONS,
+  formatMultiplier,
+  isHolidayDateISO,
+  removeHoliday,
+  upsertHoliday,
+} from '../dayRule';
 import { isNativeApp } from '../native';
 import { REMINDER_LEAD_OPTIONS } from '../reminders';
 import type { ReminderStatus } from '../reminderService';
@@ -13,8 +20,10 @@ import {
 import {
   BellIcon,
   BriefcaseIcon,
+  CalendarIcon,
   ChevronRightIcon,
   ClockIcon,
+  CloseIcon,
   DownloadIcon,
   InfoIcon,
   LogoMark,
@@ -33,10 +42,12 @@ interface SettingsProps {
   theme: ThemePreference;
   resolvedTheme: 'light' | 'dark';
   lastBackupAt: number | null;
+  dayRule: DayPayRule;
   onAddTemplate: () => void;
   onEditTemplate: (template: ShiftTemplate) => void;
   onEditGoal: () => void;
-  onThemeChange: (theme: ThemePreference) => void;
+  onDayRuleChange: (rule: DayPayRule) => void;
+  onThemeChange: (theme: ThemePreference, origin?: { x: number; y: number }) => void;
   reminder: ReminderStatus & { enabled: boolean; leadMinutes: number };
   onToggleReminder: () => void;
   onReminderLeadChange: (minutes: number) => void;
@@ -44,6 +55,7 @@ interface SettingsProps {
   onExportJson: () => void;
   onExportCsv: () => void;
   onImportFile: (file: File) => void;
+  onImportCsv: (file: File) => void;
   onClearRecords: () => void;
   installAvailable: boolean;
   onInstall: () => void;
@@ -75,9 +87,11 @@ export function Settings({
   theme,
   resolvedTheme,
   lastBackupAt,
+  dayRule,
   onAddTemplate,
   onEditTemplate,
   onEditGoal,
+  onDayRuleChange,
   onThemeChange,
   reminder,
   onToggleReminder,
@@ -86,13 +100,25 @@ export function Settings({
   onExportJson,
   onExportCsv,
   onImportFile,
+  onImportCsv,
   onClearRecords,
   installAvailable,
   onInstall,
   isStandalone,
 }: SettingsProps) {
   const fileInputRef = useRef<HTMLInputElement>(null);
+  const csvInputRef = useRef<HTMLInputElement>(null);
   const { timestamp: now } = useClock();
+  const [holidayDate, setHolidayDate] = useState('');
+  const [holidayLabel, setHolidayLabel] = useState('');
+  const holidayReady = isHolidayDateISO(holidayDate);
+  const handleAddHoliday = () => {
+    if (!holidayReady) return;
+    onDayRuleChange(upsertHoliday(dayRule, { date: holidayDate, label: holidayLabel }));
+    setHolidayDate('');
+    setHolidayLabel('');
+  };
+  const setEnabled = (enabled: boolean) => onDayRuleChange({ ...dayRule, enabled });
   const native = isNativeApp();
   const backupStale = !lastBackupAt || now - lastBackupAt > 30 * 86_400_000;
   const reminderLeadLabel =
@@ -218,13 +244,159 @@ export function Settings({
                   key={option.value}
                   type="button"
                   className={theme === option.value ? 'is-active' : ''}
-                  onClick={() => onThemeChange(option.value)}
+                  onClick={(event) => {
+                    if (theme === option.value) return;
+                    const rect = event.currentTarget.getBoundingClientRect();
+                    const x = event.clientX || rect.left + rect.width / 2;
+                    const y = event.clientY || rect.top + rect.height / 2;
+                    onThemeChange(option.value, { x, y });
+                  }}
                   aria-pressed={theme === option.value}
                 >
                   {option.label}
                 </button>
               ))}
             </div>
+          </div>
+        </div>
+      </section>
+
+      <section className="settings-section">
+        <div className="settings-heading">
+          <div>
+            <h2>日期倍率</h2>
+            <p>周末和节假日自动带出倍数，少改几次表单</p>
+          </div>
+        </div>
+        <div className="settings-group">
+          <div className="day-rule-setting">
+            <div className="reminder-head">
+              <span className="action-icon">
+                <CalendarIcon size={19} />
+              </span>
+              <span className="settings-row-main">
+                <span className="settings-row-title">周末 / 节假日自动倍数</span>
+                <span className="settings-row-sub">
+                  {dayRule.enabled
+                    ? `周末 ${formatMultiplier(dayRule.weekendMultiplier)}× · 节假日 ${formatMultiplier(dayRule.holidayMultiplier)}×`
+                    : '关闭时所有日期都按 1× 计薪'}
+                </span>
+              </span>
+              <button
+                type="button"
+                role="switch"
+                aria-checked={dayRule.enabled}
+                aria-label="周末与节假日自动倍数"
+                className={`switch${dayRule.enabled ? ' is-on' : ''}`}
+                onClick={() => setEnabled(!dayRule.enabled)}
+              >
+                <span aria-hidden="true" />
+              </button>
+            </div>
+
+            {dayRule.enabled ? (
+              <>
+                <div className="day-rule-row">
+                  <span className="day-rule-label">周末</span>
+                  <div
+                    className="segmented-control day-rule-options"
+                    role="group"
+                    aria-label="周末计薪倍数"
+                  >
+                    {DAY_MULTIPLIER_OPTIONS.map((option) => (
+                      <button
+                        key={option}
+                        type="button"
+                        className={dayRule.weekendMultiplier === option ? 'is-active' : ''}
+                        onClick={() =>
+                          onDayRuleChange({ ...dayRule, weekendMultiplier: option })
+                        }
+                        aria-pressed={dayRule.weekendMultiplier === option}
+                      >
+                        {formatMultiplier(option)}×
+                      </button>
+                    ))}
+                  </div>
+                </div>
+                <div className="day-rule-row">
+                  <span className="day-rule-label">节假日</span>
+                  <div
+                    className="segmented-control day-rule-options"
+                    role="group"
+                    aria-label="节假日计薪倍数"
+                  >
+                    {DAY_MULTIPLIER_OPTIONS.map((option) => (
+                      <button
+                        key={option}
+                        type="button"
+                        className={dayRule.holidayMultiplier === option ? 'is-active' : ''}
+                        onClick={() =>
+                          onDayRuleChange({ ...dayRule, holidayMultiplier: option })
+                        }
+                        aria-pressed={dayRule.holidayMultiplier === option}
+                      >
+                        {formatMultiplier(option)}×
+                      </button>
+                    ))}
+                  </div>
+                </div>
+
+                <div className="holiday-block">
+                  <div className="holiday-head">
+                    <span>节假日日期</span>
+                    <small>{dayRule.holidays.length} 天</small>
+                  </div>
+                  {dayRule.holidays.length > 0 ? (
+                    <div className="holiday-list">
+                      {dayRule.holidays.map((holiday) => (
+                        <span className="holiday-chip" key={holiday.date}>
+                          <span className="holiday-chip-label">{holiday.label}</span>
+                          <small>{holiday.date.slice(5).replace('-', '/')}</small>
+                          <button
+                            type="button"
+                            onClick={() => onDayRuleChange(removeHoliday(dayRule, holiday.date))}
+                            aria-label={`删除 ${holiday.label} ${holiday.date}`}
+                          >
+                            <CloseIcon size={11} />
+                          </button>
+                        </span>
+                      ))}
+                    </div>
+                  ) : (
+                    <p className="field-hint">
+                      添加法定节假日或调休，那几天会按节假日倍数计薪。
+                    </p>
+                  )}
+                  <div className="holiday-form">
+                    <input
+                      type="date"
+                      value={holidayDate}
+                      onChange={(event) => setHolidayDate(event.target.value)}
+                      aria-label="节假日日期"
+                    />
+                    <input
+                      className="text-input"
+                      value={holidayLabel}
+                      maxLength={12}
+                      placeholder="名称，如国庆"
+                      onChange={(event) => setHolidayLabel(event.target.value)}
+                      aria-label="节假日名称"
+                    />
+                    <button
+                      type="button"
+                      className="ghost-button"
+                      onClick={handleAddHoliday}
+                      disabled={!holidayReady}
+                    >
+                      添加
+                    </button>
+                  </div>
+                </div>
+                <p className="field-hint">
+                  只影响新建记录、排班和批量补记；已保存的记录仍按当时的倍数计算。
+                </p>
+              </>
+            ) : null}
           </div>
         </div>
       </section>
@@ -373,6 +545,31 @@ export function Settings({
             onChange={(event) => {
               const file = event.target.files?.[0];
               if (file) onImportFile(file);
+              event.target.value = '';
+            }}
+          />
+          <button
+            type="button"
+            className="settings-row action-row"
+            onClick={() => csvInputRef.current?.click()}
+          >
+            <span className="action-icon">
+              <UploadIcon size={19} />
+            </span>
+            <span className="settings-row-main">
+              <span className="settings-row-title">导入表格</span>
+              <span className="settings-row-sub">CSV 格式，按日期去重后追加记录</span>
+            </span>
+            <ChevronRightIcon size={17} className="row-chevron" />
+          </button>
+          <input
+            ref={csvInputRef}
+            type="file"
+            accept=".csv,text/csv"
+            hidden
+            onChange={(event) => {
+              const file = event.target.files?.[0];
+              if (file) onImportCsv(file);
               event.target.value = '';
             }}
           />

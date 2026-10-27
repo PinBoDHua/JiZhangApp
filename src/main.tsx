@@ -4,6 +4,9 @@ import { Capacitor } from '@capacitor/core';
 import './index.css';
 import App from './App.tsx';
 import { ErrorBoundary } from './components/ErrorBoundary.tsx';
+import { initMotion } from './motion';
+
+initMotion();
 
 createRoot(document.getElementById('root')!).render(
   <StrictMode>

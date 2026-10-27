@@ -1,3 +1,5 @@
+import { useRef, useState } from 'react';
+import { useIsomorphicLayoutEffect } from '../hooks/useIsomorphicLayoutEffect';
 import type { Tab } from '../types';
 import { CalendarIcon, ChartIcon, NotebookIcon, SettingsIcon } from './Icons';
 
@@ -6,6 +8,13 @@ interface BottomNavProps {
   activeTiming?: boolean;
   timingPaused?: boolean;
   onChange: (tab: Tab) => void;
+}
+
+interface IndicatorBox {
+  x: number;
+  y: number;
+  width: number;
+  height: number;
 }
 
 const tabs: { id: Tab; label: string; Icon: typeof NotebookIcon }[] = [
@@ -21,8 +30,52 @@ export function BottomNav({
   timingPaused = false,
   onChange,
 }: BottomNavProps) {
+  const navRef = useRef<HTMLElement>(null);
+  const [indicator, setIndicator] = useState<IndicatorBox | null>(null);
+  const [ready, setReady] = useState(false);
+
+  useIsomorphicLayoutEffect(() => {
+    const nav = navRef.current;
+    if (!nav) return;
+    const measure = () => {
+      const item = nav.querySelector<HTMLElement>('.nav-item.is-active');
+      const icon = item?.querySelector<HTMLElement>('.nav-icon');
+      if (!item || !icon) return;
+      const navRect = nav.getBoundingClientRect();
+      const itemRect = item.getBoundingClientRect();
+      setIndicator({
+        x: itemRect.left - navRect.left + (itemRect.width - icon.offsetWidth) / 2,
+        y: itemRect.top - navRect.top + icon.offsetTop,
+        width: icon.offsetWidth,
+        height: icon.offsetHeight,
+      });
+    };
+    measure();
+    const frame = requestAnimationFrame(() => setReady(true));
+    const observer =
+      typeof ResizeObserver === 'undefined' ? null : new ResizeObserver(measure);
+    observer?.observe(nav);
+    window.addEventListener('resize', measure);
+    return () => {
+      cancelAnimationFrame(frame);
+      observer?.disconnect();
+      window.removeEventListener('resize', measure);
+    };
+  }, [tab]);
+
   return (
-    <nav className="bottom-nav" aria-label="主导航">
+    <nav className="bottom-nav" aria-label="主导航" ref={navRef}>
+      {indicator ? (
+        <span
+          className={`nav-active-pill${ready ? ' is-ready' : ''}`}
+          style={{
+            width: `${indicator.width}px`,
+            height: `${indicator.height}px`,
+            transform: `translate3d(${indicator.x}px, ${indicator.y}px, 0)`,
+          }}
+          aria-hidden="true"
+        />
+      ) : null}
       {tabs.map(({ id, label, Icon }) => (
         <button
           key={id}

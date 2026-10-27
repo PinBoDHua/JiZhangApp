@@ -5,6 +5,7 @@ import {
   type AppPreferences,
   type BackupData,
   type BackupPreferences,
+  type DayPayRule,
   type MonthlySettlement,
   type PlanHistoryEntry,
   type PlannedShift,
@@ -12,14 +13,16 @@ import {
   type WorkRecord,
 } from './types';
 import { isValidOvertimeRule } from './pay';
+import { normalizeDayPayRule } from './dayRule';
 import { normalizeReminderLead } from './reminders';
 import { sortPlans, sortRecords } from './utils';
 
 /**
- * 2.0 数据架构：
+ * 数据架构：
  * - 所有集合写入 v2 键；
  * - 首次启动把 1.x 的 v1 键原样复制过来，旧键保留只读，升级不丢数据；
  * - meta 记录迁移版本，后续版本可以在此基础上继续升级。
+ * - 2.2 只在偏好里新增可选的 dayRule（日期倍率），键结构不变，因此仍为 2。
  */
 export const SCHEMA_VERSION = 2;
 
@@ -266,6 +269,9 @@ function normalizeBackupPreferences(value: unknown): BackupPreferences | undefin
   ) {
     preferences.reminderLeadMinutes = normalizeReminderLead(item.reminderLeadMinutes);
   }
+  if (item.dayRule && typeof item.dayRule === 'object') {
+    preferences.dayRule = normalizeDayPayRule(item.dayRule as Partial<DayPayRule>);
+  }
   return preferences;
 }
 
@@ -287,6 +293,7 @@ export function loadPreferences(): AppPreferences {
       typeof item.reminderLeadMinutes === 'number'
         ? normalizeReminderLead(item.reminderLeadMinutes)
         : DEFAULT_PREFERENCES.reminderLeadMinutes,
+    dayRule: normalizeDayPayRule(item.dayRule as Partial<DayPayRule> | undefined),
   };
 }
 
@@ -518,8 +525,8 @@ function dedupeSettlements(rows: MonthlySettlement[]): MonthlySettlement[] {
 }
 
 /**
- * 读取 1.x（version 1）与 2.0（version 2）备份，统一返回 v2 结构。
- * 2.0 备份多出应用版本与提醒设置，旧备份导入时保持现有提醒设置不变。
+ * 读取 1.x（version 1）、2.0/2.1（version 2）与 2.2（version 3）备份，
+ * 统一返回 v3 结构。旧备份缺少日期倍率时保持当前规则不变。
  */
 export function parseBackup(text: string): BackupData {
   let data: unknown;
@@ -530,7 +537,10 @@ export function parseBackup(text: string): BackupData {
   }
   if (!data || typeof data !== 'object') throw new Error('备份内容不完整');
   const backup = data as Record<string, unknown>;
-  if (backup.app !== 'shift-ledger' || (backup.version !== 1 && backup.version !== 2)) {
+  if (
+    backup.app !== 'shift-ledger' ||
+    (backup.version !== 1 && backup.version !== 2 && backup.version !== 3)
+  ) {
     throw new Error('不是工时账本的备份文件');
   }
   if (!Array.isArray(backup.records) || !Array.isArray(backup.templates)) {
@@ -550,7 +560,7 @@ export function parseBackup(text: string): BackupData {
   const preferences = normalizeBackupPreferences(backup.preferences);
   return {
     app: 'shift-ledger',
-    version: 2,
+    version: 3,
     ...(typeof backup.appVersion === 'string' ? { appVersion: backup.appVersion } : {}),
     exportedAt:
       typeof backup.exportedAt === 'string' ? backup.exportedAt : new Date().toISOString(),
@@ -584,7 +594,7 @@ export function buildBackup({
 }: BackupInput): BackupData {
   return {
     app: 'shift-ledger',
-    version: 2,
+    version: 3,
     ...(appVersion ? { appVersion } : {}),
     exportedAt: new Date().toISOString(),
     templates,

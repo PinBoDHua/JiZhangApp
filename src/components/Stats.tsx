@@ -1,6 +1,7 @@
 import { useState, type CSSProperties } from 'react';
 import { buildPlanReconciliation } from '../planStats';
 import { buildMonthForecast } from '../forecast';
+import { useAnimatedNumber } from '../hooks/useAnimatedNumber';
 import type {
   MonthlySettlement,
   PlanHistoryEntry,
@@ -211,6 +212,11 @@ export function Stats({
   const showGoal = period === 'month' && monthlyGoal > 0;
   const goalPercent = showGoal ? Math.round((summary.earnings / monthlyGoal) * 100) : 0;
   const goalRemaining = showGoal ? Math.max(0, monthlyGoal - summary.earnings) : 0;
+  const rangeKey = `${period}-${rangeStart}`;
+  const shownEarnings = useAnimatedNumber(summary.earnings, { resetKey: rangeKey });
+  const shownGoalPercent = Math.round(
+    useAnimatedNumber(goalPercent, { resetKey: rangeKey }),
+  );
 
   const chartTitle = period === 'year' ? '每月收入' : '每日收入';
   const chartHint = period === 'year' ? '轻点柱形查看当月明细' : '轻点柱形查看当天明细';
@@ -378,7 +384,7 @@ export function Stats({
         </div>
         <p className="stats-total-amount">
           <span>¥</span>
-          {formatMoney(summary.earnings)}
+          {formatMoney(shownEarnings)}
         </p>
         <div className="stats-total-foot">
           <span>出勤 {summary.days} 天</span>
@@ -426,7 +432,7 @@ export function Stats({
             <span style={{ width: `${Math.min(100, goalPercent)}%` }} />
           </div>
           <p>
-            已完成 {goalPercent}% ·{' '}
+            已完成 {shownGoalPercent}% ·{' '}
             {goalRemaining > 0 ? `还差 ¥${formatMoney(goalRemaining)}` : '目标已达成'}
           </p>
         </section>
@@ -537,37 +543,44 @@ export function Stats({
           </div>
         </div>
 
-        <div
-          className={`bar-chart${period === 'week' ? ' is-week' : ''}${
-            period === 'year' ? ' is-year' : ''
-          }${rangeRecords.length === 0 ? ' is-empty' : ''}`}
-        >
-          {chartPoints.map((point) => {
-            const height =
-              point.earnings > 0 ? Math.max(8, (point.earnings / maxEarnings) * 100) : 3;
-            return (
-              <button
-                key={point.key}
-                type="button"
-                className={`bar-col${point.key === activePoint?.key ? ' is-active' : ''}${
-                  point.count > 0 ? ' has-data' : ''
-                }`}
-                onClick={() => setSelectedKey(point.key)}
-                aria-label={`${point.focusLabel}，${point.count}班，收入${formatMoney(point.earnings)}元`}
-              >
-                <span className="bar-fill" style={{ height: `${height}%` }} />
-              </button>
-            );
-          })}
-        </div>
-        <div className="chart-axis" aria-hidden="true">
-          {chartPoints.map((point) => (
-            <span key={point.key}>{point.axisLabel}</span>
-          ))}
+        <div className="chart-stage" key={`${period}-${rangeStart}`}>
+          <div
+            className={`bar-chart${period === 'week' ? ' is-week' : ''}${
+              period === 'year' ? ' is-year' : ''
+            }${rangeRecords.length === 0 ? ' is-empty' : ''}`}
+          >
+            {chartPoints.map((point, index) => {
+              const height =
+                point.earnings > 0 ? Math.max(8, (point.earnings / maxEarnings) * 100) : 3;
+              return (
+                <button
+                  key={point.key}
+                  type="button"
+                  className={`bar-col${point.key === activePoint?.key ? ' is-active' : ''}${
+                    point.count > 0 ? ' has-data' : ''
+                  }`}
+                  style={{ '--bar-index': Math.min(index, 30) } as CSSProperties}
+                  onClick={() => setSelectedKey(point.key)}
+                  aria-label={`${point.focusLabel}，${point.count}班，收入${formatMoney(point.earnings)}元`}
+                >
+                  <span className="bar-fill" style={{ height: `${height}%` }} />
+                </button>
+              );
+            })}
+          </div>
+          <div className="chart-axis" aria-hidden="true">
+            {chartPoints.map((point) => (
+              <span key={point.key}>{point.axisLabel}</span>
+            ))}
+          </div>
         </div>
         <div className="chart-focus">
-          <span className="chart-focus-date">{activePoint?.focusLabel ?? ''}</span>
-          <span className="chart-focus-meta">{activeMeta}</span>
+          <span className="chart-focus-date" key={`${activePoint?.key}-date`}>
+            {activePoint?.focusLabel ?? ''}
+          </span>
+          <span className="chart-focus-meta" key={`${activePoint?.key}-meta`}>
+            {activeMeta}
+          </span>
         </div>
       </section>
 

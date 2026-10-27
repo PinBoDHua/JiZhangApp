@@ -1,0 +1,56 @@
+<?xml version="1.0" encoding="utf-8"?>
+<shortcuts xmlns:android="http://schemas.android.com/apk/res/android">
+
+    <shortcut
+        android:enabled="true"
+        android:icon="@mipmap/ic_launcher"
+        android:shortcutId="record"
+        android:shortcutLongLabel="@string/shortcut_record_long"
+        android:shortcutShortLabel="@string/shortcut_record_short">
+        <intent
+            android:action="android.intent.action.VIEW"
+            android:data="gongshi://record"
+            android:targetClass="com.gongshi.ledger.MainActivity"
+            android:targetPackage="com.gongshi.ledger" />
+    </shortcut>
+
+    <shortcut
+        android:enabled="true"
+        android:icon="@mipmap/ic_launcher"
+        android:shortcutId="timing"
+        android:shortcutLongLabel="@string/shortcut_timing_long"
+        android:shortcutShortLabel="@string/shortcut_timing_short">
+        <intent
+            android:action="android.intent.action.VIEW"
+            android:data="gongshi://timing"
+            android:targetClass="com.gongshi.ledger.MainActivity"
+            android:targetPackage="com.gongshi.ledger" />
+    </shortcut>
+
+    <shortcut
+        android:enabled="true"
+        android:icon="@mipmap/ic_launcher"
+        android:shortcutId="batch"
+        android:shortcutLongLabel="@string/shortcut_batch_long"
+        android:shortcutShortLabel="@string/shortcut_batch_short">
+        <intent
+            android:action="android.intent.action.VIEW"
+            android:data="gongshi://batch"
+            android:targetClass="com.gongshi.ledger.MainActivity"
+            android:targetPackage="com.gongshi.ledger" />
+    </shortcut>
+
+    <shortcut
+        android:enabled="true"
+        android:icon="@mipmap/ic_launcher"
+        android:shortcutId="stats"
+        android:shortcutLongLabel="@string/shortcut_stats_long"
+        android:shortcutShortLabel="@string/shortcut_stats_short">
+        <intent
+            android:action="android.intent.action.VIEW"
+            android:data="gongshi://stats"
+            android:targetClass="com.gongshi.ledger.MainActivity"
+            android:targetPackage="com.gongshi.ledger" />
+    </shortcut>
+
+</shortcuts>
