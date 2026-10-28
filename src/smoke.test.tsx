@@ -312,3 +312,57 @@ describe('app smoke render', () => {
     expect(forecastHtml).toContain('还差 ¥680');
   });
 });
+
+describe('app render with seeded local data', () => {
+  it('renders aggregated numbers from stored records and plans', () => {
+    const store = new Map<string, string>();
+    const localStorageStub = {
+      getItem: (key: string) => (store.has(key) ? store.get(key)! : null),
+      setItem: (key: string, value: string) => {
+        store.set(key, value);
+      },
+      removeItem: (key: string) => {
+        store.delete(key);
+      },
+    };
+    (globalThis as unknown as { localStorage: unknown }).localStorage = localStorageStub;
+
+    store.set('shift-ledger.records.v2', JSON.stringify([record]));
+    store.set(
+      'shift-ledger.plans.v2',
+      JSON.stringify([{ ...plan, date: '2099-01-05' }]),
+    );
+    store.set(
+      'shift-ledger.preferences.v2',
+      JSON.stringify({ monthlyGoal: 5000, theme: 'light', dayRule: DEFAULT_DAY_PAY_RULE }),
+    );
+    store.set(
+      'shift-ledger.settlements.v2',
+      JSON.stringify([
+        {
+          monthKey: '2026-10',
+          status: 'paid',
+          paidAt: '2026-11-05',
+          paidAmount: 3000,
+          note: '已结',
+          adjustments: [{ id: 'a1', kind: 'bonus', label: '满勤', amount: 200 }],
+          updatedAt: 1,
+        },
+      ]),
+    );
+
+    try {
+      const html = renderToString(<App />);
+      // 记录分组与合计来自 summarizeByDate / monthTotals
+      expect(html).toContain('10月24日');
+      expect(html).toContain('班次记录');
+      // 目标进度来自月度汇总
+      expect(html).toContain('月收入目标');
+      // 未来排班进入「下一班」卡片
+      expect(html).toContain('下一班');
+      expect(html).toContain('1月5日');
+    } finally {
+      delete (globalThis as unknown as { localStorage?: unknown }).localStorage;
+    }
+  });
+});

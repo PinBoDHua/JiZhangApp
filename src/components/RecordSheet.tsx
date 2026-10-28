@@ -7,6 +7,7 @@ import {
   type RecordInput,
   type ShiftTemplate,
   type WorkRecord,
+  FIELD_LIMITS,
 } from '../types';
 import { describeDayRule, resolveDayRule } from '../dayRule';
 import {
@@ -409,7 +410,7 @@ export function RecordSheet({
             value={draft.note}
             onChange={(event) => patch({ note: event.target.value })}
             placeholder="可选，如：顶班、加班两小时"
-            maxLength={40}
+            maxLength={FIELD_LIMITS.note}
           />
         </div>
       </div>

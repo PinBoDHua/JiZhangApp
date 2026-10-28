@@ -8,6 +8,8 @@ interface BottomNavProps {
   activeTiming?: boolean;
   timingPaused?: boolean;
   onChange: (tab: Tab) => void;
+  /** 浮层打开时把底栏移出可交互与读屏范围 */
+  inert?: boolean;
 }
 
 interface IndicatorBox {
@@ -29,6 +31,7 @@ export function BottomNav({
   activeTiming = false,
   timingPaused = false,
   onChange,
+  inert = false,
 }: BottomNavProps) {
   const navRef = useRef<HTMLElement>(null);
   const [indicator, setIndicator] = useState<IndicatorBox | null>(null);
@@ -64,7 +67,7 @@ export function BottomNav({
   }, [tab]);
 
   return (
-    <nav className="bottom-nav" aria-label="主导航" ref={navRef}>
+    <nav className="bottom-nav" aria-label="主导航" ref={navRef} inert={inert}>
       {indicator ? (
         <span
           className={`nav-active-pill${ready ? ' is-ready' : ''}`}

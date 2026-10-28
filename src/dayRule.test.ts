@@ -3,6 +3,7 @@ import {
   DAY_MULTIPLIER_OPTIONS,
   describeDayRule,
   formatMultiplier,
+  holidayOf,
   isHolidayDateISO,
   normalizeDayPayRule,
   removeHoliday,
@@ -100,5 +101,34 @@ describe('day pay rule', () => {
     expect(formatMultiplier(1.5)).toBe('1.5');
     expect(formatMultiplier(1.25)).toBe('1.25');
     expect(DAY_MULTIPLIER_OPTIONS).toContain(1.75);
+  });
+
+  it('falls back to 1x when the rule is disabled or malformed', () => {
+    // 关闭时不解析节假日，直接按工作日处理
+    expect(resolveDayRule(DEFAULT_DAY_PAY_RULE, '2026-10-03')).toEqual({
+      multiplier: 1,
+      kind: 'workday',
+      label: '',
+    });
+    // 手改坏的规则（holidays 不是数组）不应抛错
+    const broken = {
+      enabled: true,
+      weekendMultiplier: 2,
+      holidayMultiplier: 3,
+      holidays: null as unknown as [],
+    };
+    expect(resolveDayRule(broken, '2026-10-03').kind).toBe('weekend');
+    expect(holidayOf(broken, '2026-10-01')).toBeNull();
+  });
+
+  it('ignores out-of-range multipliers instead of returning NaN', () => {
+    const rule = {
+      enabled: true,
+      weekendMultiplier: Number.NaN,
+      holidayMultiplier: 0,
+      holidays: [{ date: '2026-10-01', label: '国庆' }],
+    };
+    expect(resolveDayRule(rule, '2026-10-03').multiplier).toBe(2);
+    expect(resolveDayRule(rule, '2026-10-01').multiplier).toBe(3);
   });
 });

@@ -9,6 +9,7 @@ interface BeforeInstallPromptEvent extends Event {
 function readStandalone(): boolean {
   if (typeof window === 'undefined') return false;
   const iosStandalone = (navigator as Navigator & { standalone?: boolean }).standalone === true;
+  if (typeof window.matchMedia !== 'function') return iosStandalone;
   return window.matchMedia('(display-mode: standalone)').matches || iosStandalone;
 }
 

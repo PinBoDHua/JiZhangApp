@@ -4,6 +4,7 @@ import {
   SHIFT_COLOR_NAMES,
   type OvertimeRule,
   type ShiftTemplate,
+  FIELD_LIMITS,
 } from '../types';
 import {
   formatDuration,
@@ -118,7 +119,7 @@ export function TemplateSheet({
             value={draft.name}
             onChange={(event) => patch({ name: event.target.value })}
             placeholder="如：白班、夜班、中班"
-            maxLength={12}
+            maxLength={FIELD_LIMITS.templateName}
           />
         </div>
 

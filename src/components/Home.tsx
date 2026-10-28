@@ -1,27 +1,22 @@
-import { useState, type CSSProperties } from 'react';
+import { useMemo, useState, type CSSProperties } from 'react';
 import { findMissedPlans } from '../planStats';
 import { buildMonthForecast } from '../forecast';
+import { buildWeekOverview, monthTotals, summarizeByDate } from '../overview';
+import { filterRecords, normalizeSearchQuery } from '../search';
 import { useAnimatedNumber } from '../hooks/useAnimatedNumber';
 import type { ActiveShift, PlannedShift, ShiftTemplate, WorkRecord } from '../types';
 import {
   addDaysISO,
-  earningsOf,
   formatDateCN,
   formatDayHeading,
   formatHeaderDate,
   formatHours,
   formatMoney,
-  getWeekRange,
   groupByDate,
   isPlanPast,
   monthKey,
-  recordEarnings,
-  recordMinutes,
-  recordsInMonth,
-  recordsInRange,
   sortPlans,
   sortRecords,
-  summarizeRecords,
   toISODate,
 } from '../utils';
 import {
@@ -51,7 +46,8 @@ interface HomeProps {
   plans: PlannedShift[];
   monthlyGoal: number;
   activeShift: ActiveShift | null;
-  onAdd: (template: ShiftTemplate | null) => void;
+  /** 打开记账浮层；template 为 null 表示自定义班次 */
+  onAddRecord: (template: ShiftTemplate | null) => void;
   onEditRecord: (record: WorkRecord) => void;
   onGoStats: () => void;
   onGoWeekStats: () => void;
@@ -84,7 +80,7 @@ export function Home({
   plans,
   monthlyGoal,
   activeShift,
-  onAdd,
+  onAddRecord,
   onEditRecord,
   onGoStats,
   onGoWeekStats,
@@ -98,41 +94,43 @@ export function Home({
   onResumeTiming,
   onAbandonTiming,
 }: HomeProps) {
-  const { date: now } = useClock();
+  const { date: now, timestamp } = useClock();
   const [query, setQuery] = useState('');
   const [visibleGroups, setVisibleGroups] = useState(RECORD_GROUPS_PER_PAGE);
 
-  const changeQuery = (next: string) => {
-    setQuery(next);
-    setVisibleGroups(RECORD_GROUPS_PER_PAGE);
-  };
+  const today = toISODate(now);
+  // 从 ISO 字符串反推年月（字符串不可变，便于 memo 依赖保持稳定）
+  const year = Number(today.slice(0, 4));
+  const monthIndex = Number(today.slice(5, 7)) - 1;
+  /** 与分钟对齐的时间戳：秒级变化不应触发所有派生计算重跑 */
+  const minuteKey = Math.floor(timestamp / 60_000);
 
-  const monthRecords = recordsInMonth(records, now.getFullYear(), now.getMonth());
-  const totalMinutes = monthRecords.reduce((sum, record) => sum + recordMinutes(record), 0);
-  const totalEarnings = monthRecords.reduce((sum, record) => sum + recordEarnings(record), 0);
-  const workedDays = new Set(monthRecords.map((record) => record.date)).size;
-  const monthForecast = buildMonthForecast({
-    records,
-    plans,
-    monthPrefix: monthKey(now.getFullYear(), now.getMonth()),
-    now,
-    goal: monthlyGoal,
-  });
+  // 记录按日汇总只算一次，本月概览、本周概览都从这里取，避免同一条记录多次计薪
+  const totalsByDate = useMemo(() => summarizeByDate(records), [records]);
+  // 月度/周度只是对按日汇总做几十次查表，成本可以忽略，无需再包一层 useMemo
+  const monthSummary = monthTotals(year, monthIndex, totalsByDate);
+  const monthForecast = useMemo(
+    () =>
+      buildMonthForecast({
+        records,
+        plans,
+        monthPrefix: today.slice(0, 7),
+        // 以分钟为粒度重建时间，避免 now 每秒变化导致重复计算
+        now: new Date(minuteKey * 60_000),
+        goal: monthlyGoal,
+      }),
+    [records, plans, today, minuteKey, monthlyGoal],
+  );
 
-  const normalizedQuery = query.trim().toLowerCase();
-  const filteredRecords = normalizedQuery
-    ? records.filter((record) =>
-        [record.shiftName, record.note, record.date, formatDateCN(record.date)].some((value) =>
-          value.toLowerCase().includes(normalizedQuery),
-        ),
-      )
-    : records;
-  const groups = groupByDate(sortRecords(filteredRecords));
+  const normalizedQuery = normalizeSearchQuery(query);
+  const filteredRecords = useMemo(() => filterRecords(records, query), [records, query]);
+  const groups = useMemo(() => groupByDate(sortRecords(filteredRecords)), [filteredRecords]);
   const shownGroups = groups.slice(0, visibleGroups);
   const hiddenGroupCount = groups.length - shownGroups.length;
   const showSearch = records.length > 5 || normalizedQuery.length > 0;
-  const goalPercent = monthlyGoal > 0 ? Math.round((totalEarnings / monthlyGoal) * 100) : 0;
-  const goalDone = monthlyGoal > 0 && totalEarnings >= monthlyGoal;
+  const goalPercent =
+    monthlyGoal > 0 ? Math.round((monthSummary.earnings / monthlyGoal) * 100) : 0;
+  const goalDone = monthlyGoal > 0 && monthSummary.earnings >= monthlyGoal;
   const projectedGoalPercent =
     monthlyGoal > 0 ? Math.round((monthForecast.projectedEarnings / monthlyGoal) * 100) : 0;
   const projectedGoalDone =
@@ -143,69 +141,46 @@ export function Home({
     Math.max(0, projectedGoalPercent - goalPercent),
   );
 
-  const today = toISODate(now);
-  const missedPlans = findMissedPlans(
-    plans,
-    now,
-    activeShift?.sourcePlanId ?? null,
+  const clock = useMemo(() => new Date(minuteKey * 60_000), [minuteKey]);
+  const activePlanId = activeShift?.sourcePlanId ?? null;
+  const missedPlans = useMemo(
+    () => findMissedPlans(plans, clock, activePlanId),
+    [plans, clock, activePlanId],
   );
-  const upcomingPlans = sortPlans(plans.filter((plan) => !isPlanPast(plan, now)));
+  const upcomingPlans = useMemo(
+    () => sortPlans(plans.filter((plan) => !isPlanPast(plan, clock))),
+    [plans, clock],
+  );
   const nextPlan = upcomingPlans[0] ?? null;
-  const upcomingCount = upcomingPlans.filter(
-    (plan) => plan.date <= addDaysISO(today, 7),
-  ).length;
-  const weekRange = getWeekRange(today);
-  const weekDates = Array.from({ length: 7 }, (_, index) =>
-    addDaysISO(weekRange.start, index),
-  );
-  const todayWeekIndex = weekDates.indexOf(today);
-  const weekRecords = recordsInRange(records, weekRange.start, weekRange.end);
-  const previousWeekRange = getWeekRange(addDaysISO(weekRange.start, -7));
-  const previousWeekCutoff =
-    todayWeekIndex >= 0
-      ? addDaysISO(previousWeekRange.start, todayWeekIndex)
-      : previousWeekRange.end;
-  const previousWeekRecords = recordsInRange(
-    records,
-    previousWeekRange.start,
-    previousWeekCutoff,
-  );
-  const weekSummary = summarizeRecords(weekRecords);
-  const weekMinutes = weekSummary.minutes;
-  const weekEarnings = weekSummary.earnings;
-  const weekWorkedDays = weekSummary.days;
-  const previousWeekEarnings = summarizeRecords(previousWeekRecords).earnings;
-  const weekSeries = weekDates.map((date) => ({
-    date,
-    earnings: records
-      .filter((record) => record.date === date)
-      .reduce((sum, record) => sum + recordEarnings(record), 0),
-  }));
-  const maxWeekDayEarnings = Math.max(...weekSeries.map((day) => day.earnings), 1);
-  const hasWeekData = weekRecords.length > 0 || previousWeekRecords.length > 0;
-  const weekDifference = weekEarnings - previousWeekEarnings;
+  const upcomingCount = upcomingPlans.filter((plan) => plan.date <= addDaysISO(today, 7)).length;
+  const week = buildWeekOverview(today, totalsByDate);
   const weekTrendText =
-    weekRecords.length === 0
+    week.current.shifts === 0
       ? '本周暂无记录'
-      : previousWeekEarnings > 0
-        ? weekDifference === 0
+      : week.previous.earnings > 0
+        ? week.difference === 0
           ? '较上周持平'
-          : `较上周 ${weekDifference > 0 ? '+' : '-'}¥${formatMoney(Math.abs(weekDifference))}`
+          : `较上周 ${week.difference > 0 ? '+' : '-'}¥${formatMoney(Math.abs(week.difference))}`
         : '上周无记录';
   const weekTrendClass =
-    weekRecords.length === 0
+    week.current.shifts === 0
       ? ''
-      : weekDifference > 0
+      : week.difference > 0
         ? ' is-up'
-        : weekDifference < 0
+        : week.difference < 0
           ? ' is-down'
           : '';
-  const shownEarnings = useAnimatedNumber(totalEarnings, {
-    resetKey: monthKey(now.getFullYear(), now.getMonth()),
+  const shownEarnings = useAnimatedNumber(monthSummary.earnings, {
+    resetKey: monthKey(year, monthIndex),
   });
-  const shownWeekEarnings = useAnimatedNumber(weekEarnings, {
-    resetKey: weekRange.start,
+  const shownWeekEarnings = useAnimatedNumber(week.current.earnings, {
+    resetKey: week.start,
   });
+
+  const changeQuery = (next: string) => {
+    setQuery(next);
+    setVisibleGroups(RECORD_GROUPS_PER_PAGE);
+  };
 
   return (
     <div className="screen home-screen">
@@ -281,21 +256,21 @@ export function Home({
           <div>
             <span>总工时</span>
             <strong>
-              {formatHours(totalMinutes)}
+              {formatHours(monthSummary.minutes)}
               <small>h</small>
             </strong>
           </div>
           <div>
             <span>出勤</span>
             <strong>
-              {workedDays}
+              {monthSummary.days}
               <small>天</small>
             </strong>
           </div>
           <div>
             <span>班次</span>
             <strong>
-              {monthRecords.length}
+              {monthSummary.shifts}
               <small>班</small>
             </strong>
           </div>
@@ -334,21 +309,21 @@ export function Home({
             </div>
             <p>
               {goalDone
-                ? `已超出目标 ¥${formatMoney(totalEarnings - monthlyGoal)}`
+                ? `已超出目标 ¥${formatMoney(monthSummary.earnings - monthlyGoal)}`
                 : projectedGoalDone
-                  ? `还差 ¥${formatMoney(monthlyGoal - totalEarnings)}，按排班预计可达标`
-                  : `还差 ¥${formatMoney(monthlyGoal - totalEarnings)} 达成`}
+                  ? `还差 ¥${formatMoney(monthlyGoal - monthSummary.earnings)}，按排班预计可达标`
+                  : `还差 ¥${formatMoney(monthlyGoal - monthSummary.earnings)} 达成`}
             </p>
           </div>
         ) : null}
       </section>
 
-      {hasWeekData ? (
+      {week.hasData ? (
         <button
           type="button"
           className="week-glance"
           onClick={onGoWeekStats}
-          aria-label={`查看本周统计，本周收入 ${formatMoney(weekEarnings)} 元，工时 ${formatHours(weekMinutes)} 小时，出勤 ${weekWorkedDays} 天`}
+          aria-label={`查看本周统计，本周收入 ${formatMoney(week.current.earnings)} 元，工时 ${formatHours(week.current.minutes)} 小时，出勤 ${week.current.days} 天`}
         >
           <span className="week-glance-main">
             <span className="week-glance-head">
@@ -361,18 +336,18 @@ export function Home({
               {formatMoney(shownWeekEarnings)}
             </span>
             <span className="week-glance-meta">
-              {formatHours(weekMinutes)}h
+              {formatHours(week.current.minutes)}h
               <span className="dot-divider" aria-hidden="true" />
-              {weekWorkedDays} 天
+              {week.current.days} 天
             </span>
           </span>
           <span className="week-spark" aria-hidden="true">
-            {weekSeries.map((day, index) => (
+            {week.points.map((day, index) => (
               <span
                 key={day.date}
                 style={{ '--spark-index': index } as CSSProperties}
                 className={[
-                  index === todayWeekIndex ? 'is-today' : '',
+                  index === week.todayIndex ? 'is-today' : '',
                   day.earnings === 0 ? 'is-empty' : '',
                 ]
                   .filter(Boolean)
@@ -380,7 +355,7 @@ export function Home({
               >
                 <i
                   style={{
-                    height: `${day.earnings > 0 ? Math.max(8, (day.earnings / maxWeekDayEarnings) * 100) : 3}%`,
+                    height: `${day.earnings > 0 ? Math.max(8, (day.earnings / week.maxDayEarnings) * 100) : 3}%`,
                   }}
                 />
               </span>
@@ -412,7 +387,7 @@ export function Home({
                 type="button"
                 className="quick-card"
                 style={{ '--shift-color': template.color } as CSSProperties}
-                onClick={() => onAdd(template)}
+                onClick={() => onAddRecord(template)}
               >
                 <span className="quick-top">
                   <span className="quick-icon">
@@ -430,7 +405,7 @@ export function Home({
               </button>
             );
           })}
-          <button type="button" className="quick-card is-custom" onClick={() => onAdd(null)}>
+          <button type="button" className="quick-card is-custom" onClick={() => onAddRecord(null)}>
             <span className="quick-add">
               <PlusIcon size={18} />
             </span>
@@ -494,7 +469,7 @@ export function Home({
             </div>
             <h3>从第一班开始</h3>
             <p>记下工作时间和时薪，月底的收入自动算好。</p>
-            <button type="button" className="primary-button" onClick={() => onAdd(templates[0] ?? null)}>
+            <button type="button" className="primary-button" onClick={() => onAddRecord(templates[0] ?? null)}>
               <PlusIcon size={18} />
               记下第一班
             </button>
@@ -510,8 +485,10 @@ export function Home({
         ) : (
           <div className="day-groups">
             {shownGroups.map((group, groupIndex) => {
-              const dayMinutes = group.items.reduce((sum, item) => sum + recordMinutes(item), 0);
-              const dayEarnings = group.items.reduce((sum, item) => sum + earningsOf(item), 0);
+              // 直接复用按日汇总，避免同一天的多条记录重复计薪
+              const dayTotal = totalsByDate.get(group.date);
+              const dayMinutes = dayTotal?.minutes ?? 0;
+              const dayEarnings = dayTotal?.earnings ?? 0;
               return (
                 <div
                   className="day-group"

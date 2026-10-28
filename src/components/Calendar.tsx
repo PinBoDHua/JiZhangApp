@@ -1,12 +1,19 @@
-import { useEffect, useRef, useState, type TouchEvent as ReactTouchEvent } from 'react';
+import {
+  useEffect,
+  useMemo,
+  useRef,
+  useState,
+  type TouchEvent as ReactTouchEvent,
+} from 'react';
 import type { PlannedShift, ShiftTemplate, WorkRecord } from '../types';
 import { isPlanMissed } from '../planStats';
+import { summarizeByDate, summarizePlansByDate } from '../overview';
+import { isISODate } from '../storage';
 import { hapticTap } from '../feedback';
 import { useAnimatedNumber } from '../hooks/useAnimatedNumber';
 import {
   canStartPlan,
   daysInMonth,
-  earningsOf,
   formatDayHeading,
   formatDuration,
   formatHours,
@@ -18,10 +25,9 @@ import {
   pad2,
   parseISODate,
   planPay,
-  recordEarnings,
-  recordMinutes,
   recordsInMonth,
   shiftMonth,
+  summarizeRecords,
   toISODate,
   workedMinutes,
 } from '../utils';
@@ -205,14 +211,16 @@ export function Calendar({
 }: CalendarProps) {
   const { date: current } = useClock();
   const today = toISODate(current);
-  const initialFocus = focusRequest ? parseISODate(focusRequest.date) : current;
+  const currentYear = Number(today.slice(0, 4));
+  const currentMonthIndex = Number(today.slice(5, 7)) - 1;
+  // focusRequest 可能来自通知等外部入口，日期不合法时退回今天，避免出现 NaN 年月
+  const focusDate = focusRequest && isISODate(focusRequest.date) ? focusRequest.date : null;
+  const initialFocus = focusDate ? parseISODate(focusDate) : current;
   const [anchor, setAnchor] = useState({
     year: initialFocus.getFullYear(),
     monthIndex: initialFocus.getMonth(),
   });
-  const [selectedDate, setSelectedDate] = useState(
-    focusRequest?.date ?? today,
-  );
+  const [selectedDate, setSelectedDate] = useState(focusDate ?? today);
   const [monthMotion, setMonthMotion] = useState<'next' | 'prev' | null>(null);
   const panelRef = useRef<HTMLElement>(null);
   const touchStartRef = useRef<{
@@ -225,32 +233,65 @@ export function Calendar({
   const panelTimerRef = useRef<number | null>(null);
 
   const isCurrentMonth =
-    anchor.year === current.getFullYear() && anchor.monthIndex === current.getMonth();
+    anchor.year === currentYear && anchor.monthIndex === currentMonthIndex;
   const prefix = monthKey(anchor.year, anchor.monthIndex);
-  const monthRecords = recordsInMonth(records, anchor.year, anchor.monthIndex);
-  const monthPlans = plans.filter((plan) => plan.date.startsWith(prefix));
-  const totalMinutes = monthRecords.reduce((sum, record) => sum + recordMinutes(record), 0);
-  const totalEarnings = monthRecords.reduce((sum, record) => sum + recordEarnings(record), 0);
-  const workedDays = new Set(monthRecords.map((record) => record.date)).size;
-  const plannedMinutes = monthPlans.reduce(
-    (sum, plan) => sum + workedMinutes(plan.start, plan.end, plan.breakMinutes),
-    0,
-  );
-  const plannedEarnings = monthPlans.reduce((sum, plan) => sum + earningsOf(plan), 0);
-  const plannedDays = new Set(monthPlans.map((plan) => plan.date)).size;
 
-  const byDate = new Map<string, WorkRecord[]>();
-  monthRecords.forEach((record) => {
-    const list = byDate.get(record.date) ?? [];
-    list.push(record);
-    byDate.set(record.date, list);
-  });
-  const plansByDate = new Map<string, PlannedShift[]>();
-  monthPlans.forEach((plan) => {
-    const list = plansByDate.get(plan.date) ?? [];
-    list.push(plan);
-    plansByDate.set(plan.date, list);
-  });
+  /**
+   * 月历需要的派生数据一次算完：
+   * 选日期、滑动手势都会触发重渲染，如果逐格重新计薪，大月视图会明显卡顿。
+   */
+  const monthView = useMemo(() => {
+    const monthRecords = recordsInMonth(records, anchor.year, anchor.monthIndex);
+    const monthPlans = plans.filter((plan) => plan.date.startsWith(prefix));
+
+    const recordsByDate = new Map<string, WorkRecord[]>();
+    monthRecords.forEach((record) => {
+      const list = recordsByDate.get(record.date) ?? [];
+      list.push(record);
+      recordsByDate.set(record.date, list);
+    });
+    const plansByDate = new Map<string, PlannedShift[]>();
+    monthPlans.forEach((plan) => {
+      const list = plansByDate.get(plan.date) ?? [];
+      list.push(plan);
+      plansByDate.set(plan.date, list);
+    });
+
+    const planTotals = summarizePlansByDate(monthPlans);
+    let plannedMinutes = 0;
+    let plannedEarnings = 0;
+    planTotals.forEach((day) => {
+      plannedMinutes += day.minutes;
+      plannedEarnings += day.earnings;
+    });
+
+    return {
+      monthPlans,
+      recordsByDate,
+      plansByDate,
+      recordTotals: summarizeByDate(monthRecords),
+      recordSummary: summarizeRecords(monthRecords),
+      planTotals,
+      plannedMinutes,
+      plannedEarnings: Math.round(plannedEarnings * 100) / 100,
+      plannedDays: planTotals.size,
+    };
+  }, [records, plans, anchor.year, anchor.monthIndex, prefix]);
+
+  const {
+    monthPlans,
+    recordsByDate: byDate,
+    plansByDate,
+    recordTotals,
+    recordSummary,
+    planTotals,
+    plannedMinutes,
+    plannedEarnings,
+    plannedDays,
+  } = monthView;
+  const totalMinutes = recordSummary.minutes;
+  const totalEarnings = recordSummary.earnings;
+  const workedDays = recordSummary.days;
 
   const dayCount = daysInMonth(anchor.year, anchor.monthIndex);
   const leadingBlanks = (new Date(anchor.year, anchor.monthIndex, 1).getDay() + 6) % 7;
@@ -261,16 +302,12 @@ export function Calendar({
   const selectedPlans = (plansByDate.get(selectedDate) ?? [])
     .slice()
     .sort((a, b) => a.start.localeCompare(b.start));
-  const selectedMinutes = selectedRecords.reduce((sum, record) => sum + recordMinutes(record), 0);
-  const selectedEarnings = selectedRecords.reduce((sum, record) => sum + earningsOf(record), 0);
-  const selectedPlannedMinutes = selectedPlans.reduce(
-    (sum, plan) => sum + workedMinutes(plan.start, plan.end, plan.breakMinutes),
-    0,
-  );
-  const selectedPlannedEarnings = selectedPlans.reduce(
-    (sum, plan) => sum + earningsOf(plan),
-    0,
-  );
+  const selectedTotals = recordTotals.get(selectedDate);
+  const selectedMinutes = selectedTotals?.minutes ?? 0;
+  const selectedEarnings = selectedTotals?.earnings ?? 0;
+  const selectedPlanTotals = planTotals.get(selectedDate);
+  const selectedPlannedMinutes = selectedPlanTotals?.minutes ?? 0;
+  const selectedPlannedEarnings = selectedPlanTotals?.earnings ?? 0;
   const shownMonthEarnings = useAnimatedNumber(
     mode === 'records' ? totalEarnings : plannedEarnings,
     { resetKey: `${anchor.year}-${anchor.monthIndex}-${mode}` },
@@ -554,8 +591,8 @@ export function Calendar({
               new Set(items.map((item) => item.shiftColor)),
             ).slice(0, 3);
             const dayTotal = showsRecords
-              ? cellRecords.reduce((sum, record) => sum + recordEarnings(record), 0)
-              : cellPlans.reduce((sum, plan) => sum + earningsOf(plan), 0);
+              ? (recordTotals.get(cell.date)?.earnings ?? 0)
+              : (planTotals.get(cell.date)?.earnings ?? 0);
             const label = showsRecords
               ? cellRecords.length > 0
                 ? `${cellRecords.length} 班，收入 ${formatMoney(dayTotal)} 元`

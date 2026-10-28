@@ -367,7 +367,13 @@ export function Settings({
                       添加法定节假日或调休，那几天会按节假日倍数计薪。
                     </p>
                   )}
-                  <div className="holiday-form">
+                  <form
+                    className="holiday-form"
+                    onSubmit={(event) => {
+                      event.preventDefault();
+                      handleAddHoliday();
+                    }}
+                  >
                     <input
                       type="date"
                       value={holidayDate}
@@ -382,15 +388,10 @@ export function Settings({
                       onChange={(event) => setHolidayLabel(event.target.value)}
                       aria-label="节假日名称"
                     />
-                    <button
-                      type="button"
-                      className="ghost-button"
-                      onClick={handleAddHoliday}
-                      disabled={!holidayReady}
-                    >
+                    <button type="submit" className="ghost-button" disabled={!holidayReady}>
                       添加
                     </button>
-                  </div>
+                  </form>
                 </div>
                 <p className="field-hint">
                   只影响新建记录、排班和批量补记；已保存的记录仍按当时的倍数计算。

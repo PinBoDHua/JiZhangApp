@@ -1,5 +1,5 @@
 import type { DayPayRule, ShiftTemplate, WorkRecord } from './types';
-import { SHIFT_COLORS } from './types';
+import { FIELD_LIMITS, SHIFT_COLORS } from './types';
 import { resolveDayRule } from './dayRule';
 import type { RecordDraft } from './batch';
 import { isISODate, isTimeHM } from './storage';
@@ -199,7 +199,8 @@ export function parseCsvRecords(text: string, options: CsvImportOptions): CsvImp
       if (errors.length < 3) errors.push(`第 ${line} 行：休息时长不合理`);
       return;
     }
-    const rawName = cell(row, header.shiftName).trim();
+    // 表格可能来自任何工具：超长文本按表单上限截断，避免把界面撑破
+    const rawName = cell(row, header.shiftName).trim().slice(0, FIELD_LIMITS.shiftName);
     const matchedTemplate = rawName
       ? options.templates.find((template) => template.name === rawName)
       : undefined;
@@ -234,7 +235,7 @@ export function parseCsvRecords(text: string, options: CsvImportOptions): CsvImp
       breakMinutes: Math.round(breakMinutes),
       rate,
       multiplier,
-      note: cell(row, header.note).trim(),
+      note: cell(row, header.note).trim().slice(0, FIELD_LIMITS.note),
       overtime: template?.overtime ?? null,
     });
   });

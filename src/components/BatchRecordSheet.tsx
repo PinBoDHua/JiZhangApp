@@ -1,10 +1,6 @@
 import { useState } from 'react';
-import type {
-  DayPayRule,
-  PlannedShift,
-  ShiftTemplate,
-  WorkRecord,
-} from '../types';
+import { FIELD_LIMITS } from '../types';
+import type { DayPayRule, PlannedShift, ShiftTemplate, WorkRecord } from '../types';
 import {
   batchRangeDays,
   buildBatchRecords,
@@ -351,7 +347,7 @@ export function BatchRecordSheet({
             value={draft.note}
             onChange={(event) => patch({ note: event.target.value })}
             placeholder="可选，会写入每一条记录"
-            maxLength={40}
+            maxLength={FIELD_LIMITS.note}
           />
         </div>
       </div>

@@ -6,6 +6,7 @@ import {
   type PlanInput,
   type PlannedShift,
   type ShiftTemplate,
+  FIELD_LIMITS,
 } from '../types';
 import {
   addDaysISO,
@@ -448,7 +449,7 @@ export function PlanSheet({
             value={draft.note}
             onChange={(event) => patch({ note: event.target.value })}
             placeholder="可选，如：带新人、备货"
-            maxLength={40}
+            maxLength={FIELD_LIMITS.note}
           />
         </div>
       </div>

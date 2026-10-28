@@ -1,6 +1,6 @@
-import { useState, type CSSProperties } from 'react';
-import { buildPlanReconciliation } from '../planStats';
-import { buildMonthForecast } from '../forecast';
+import { useMemo, useState, type CSSProperties } from 'react';
+import { buildPlanReconciliation, type PlanReconciliation } from '../planStats';
+import { buildMonthForecast, type MonthForecast } from '../forecast';
 import { useAnimatedNumber } from '../hooks/useAnimatedNumber';
 import type {
   MonthlySettlement,
@@ -13,7 +13,6 @@ import type {
 import {
   addDaysISO,
   daysInMonth,
-  earningsOf,
   formatDateRangeCN,
   formatDuration,
   formatHours,
@@ -23,13 +22,15 @@ import {
   monthLabel,
   pad2,
   parseISODate,
-  recordMinutes,
+  recordPay,
   recordsInMonth,
   recordsInRange,
   shiftMonth,
   summarizeRecords,
   toISODate,
+  type RecordsSummary,
 } from '../utils';
+import { summarizeByDate } from '../overview';
 import { RangeSwitcher } from './RangeSwitcher';
 import { ForecastCard } from './ForecastCard';
 import { YearReview } from './YearReview';
@@ -60,12 +61,202 @@ interface ChartPoint {
   focusLabel: string;
 }
 
+export interface BreakdownItem {
+  name: string;
+  color: string;
+  minutes: number;
+  earnings: number;
+  count: number;
+}
+
+interface RangeInput {
+  period: StatsPeriod;
+  records: WorkRecord[];
+  today: string;
+  currentWeekStart: string;
+  weekStart: string;
+  yearAnchor: number;
+  monthYear: number;
+  monthIndex: number;
+}
+
+interface StatsRange {
+  start: string;
+  end: string;
+  records: WorkRecord[];
+  label: string;
+  isCurrent: boolean;
+  currentLabel: string;
+  resetLabel: string;
+  previousLabel: string;
+  nextLabel: string;
+  emptyLabel: string;
+}
+
 const WEEKDAY_LETTERS = ['一', '二', '三', '四', '五', '六', '日'];
 const PERIOD_OPTIONS: { value: StatsPeriod; label: string }[] = [
   { value: 'week', label: '本周' },
   { value: 'month', label: '本月' },
   { value: 'year', label: '今年' },
 ];
+
+/** 解析当前统计周期的时间范围与对应记录 */
+function resolveRange({
+  period,
+  records,
+  today,
+  currentWeekStart,
+  weekStart,
+  yearAnchor,
+  monthYear,
+  monthIndex,
+}: RangeInput): StatsRange {
+  if (period === 'week') {
+    const end = addDaysISO(weekStart, 6);
+    return {
+      start: weekStart,
+      end,
+      records: recordsInRange(records, weekStart, end),
+      label: formatDateRangeCN(weekStart, end),
+      isCurrent: weekStart === currentWeekStart,
+      currentLabel: '本周',
+      resetLabel: '回到本周',
+      previousLabel: '上一周',
+      nextLabel: '下一周',
+      emptyLabel: '本周',
+    };
+  }
+  if (period === 'year') {
+    const start = `${yearAnchor}-01-01`;
+    const end = `${yearAnchor}-12-31`;
+    return {
+      start,
+      end,
+      records: recordsInRange(records, start, end),
+      label: `${yearAnchor}年`,
+      isCurrent: start.startsWith(today.slice(0, 4)),
+      currentLabel: '今年',
+      resetLabel: '回到今年',
+      previousLabel: '上一年',
+      nextLabel: '下一年',
+      emptyLabel: '今年',
+    };
+  }
+  const start = `${monthKey(monthYear, monthIndex)}-01`;
+  const end = `${monthKey(monthYear, monthIndex)}-${pad2(daysInMonth(monthYear, monthIndex))}`;
+  return {
+    start,
+    end,
+    records: recordsInMonth(records, monthYear, monthIndex),
+    label: monthLabel(monthYear, monthIndex),
+    isCurrent: `${monthYear}-${pad2(monthIndex + 1)}` === today.slice(0, 7),
+    currentLabel: '本月',
+    resetLabel: '回到本月',
+    previousLabel: '上个月',
+    nextLabel: '下个月',
+    emptyLabel: '本月',
+  };
+}
+
+/**
+ * 图表柱：周看 7 天，月看当月每一天，年看 12 个月。
+ * 先把记录按日汇总一次，再按周期取数，避免 31 天 × 全量记录的重复过滤。
+ */
+function buildChartPoints(
+  range: StatsRange,
+  period: StatsPeriod,
+  monthYear: number,
+  monthIndex: number,
+): ChartPoint[] {
+  const totals = summarizeByDate(range.records);
+  const dayPoint = (date: string, axisLabel: string, focusLabel: string): ChartPoint => {
+    const day = totals.get(date);
+    return {
+      key: date,
+      axisLabel,
+      focusLabel,
+      earnings: day?.earnings ?? 0,
+      minutes: day?.minutes ?? 0,
+      count: day?.shifts ?? 0,
+    };
+  };
+
+  if (period === 'week') {
+    return Array.from({ length: 7 }, (_, index) => {
+      const date = addDaysISO(range.start, index);
+      const parsed = parseISODate(date);
+      return dayPoint(date, WEEKDAY_LETTERS[index], `${parsed.getMonth() + 1}月${parsed.getDate()}日`);
+    });
+  }
+
+  if (period === 'year') {
+    const year = range.start.slice(0, 4);
+    const months = new Map<string, { earnings: number; minutes: number; count: number }>();
+    totals.forEach((day, date) => {
+      const key = date.slice(0, 7);
+      const current = months.get(key) ?? { earnings: 0, minutes: 0, count: 0 };
+      current.earnings += day.earnings;
+      current.minutes += day.minutes;
+      current.count += day.shifts;
+      months.set(key, current);
+    });
+    return Array.from({ length: 12 }, (_, index) => {
+      const month = index + 1;
+      const key = `${year}-${pad2(month)}`;
+      const monthTotal = months.get(key);
+      return {
+        key,
+        axisLabel: String(month),
+        focusLabel: `${month}月`,
+        earnings: monthTotal ? Math.round(monthTotal.earnings * 100) / 100 : 0,
+        minutes: monthTotal?.minutes ?? 0,
+        count: monthTotal?.count ?? 0,
+      };
+    });
+  }
+
+  const dayCount = daysInMonth(monthYear, monthIndex);
+  const prefix = range.start.slice(0, 7);
+  return Array.from({ length: dayCount }, (_, index) => {
+    const day = index + 1;
+    const showAxis = day === 1 || day === 10 || day === 20 || day === dayCount;
+    return dayPoint(
+      `${prefix}-${pad2(day)}`,
+      showAxis ? String(day) : '',
+      `${monthIndex + 1}月${day}日`,
+    );
+  });
+}
+
+/** 按班次名汇总：每条记录只计薪一次 */
+function buildBreakdown(records: WorkRecord[]): BreakdownItem[] {
+  const map = new Map<string, BreakdownItem>();
+  records.forEach((record) => {
+    const pay = recordPay(record);
+    const existing = map.get(record.shiftName);
+    if (existing) {
+      existing.minutes += pay.minutes;
+      existing.earnings += pay.total;
+      existing.count += 1;
+      return;
+    }
+    map.set(record.shiftName, {
+      name: record.shiftName,
+      color: record.shiftColor,
+      minutes: pay.minutes,
+      earnings: pay.total,
+      count: 1,
+    });
+  });
+  return Array.from(map.values()).sort((a, b) => b.earnings - a.earnings);
+}
+
+interface PeriodView {
+  range: StatsRange;
+  summary: RecordsSummary;
+  chartPoints: ChartPoint[];
+  breakdownItems: BreakdownItem[];
+}
 
 export function Stats({
   records,
@@ -83,114 +274,52 @@ export function Stats({
   const { date: current } = useClock();
   const today = toISODate(current);
   const currentWeekStart = getWeekRange(today).start;
+  const currentYear = Number(today.slice(0, 4));
+  const currentMonthIndex = Number(today.slice(5, 7)) - 1;
   const [period, setPeriod] = useState<StatsPeriod>(initialPeriod);
-  const [monthAnchor, setMonthAnchor] = useState({
-    year: current.getFullYear(),
-    monthIndex: current.getMonth(),
-  });
+  const [monthAnchor, setMonthAnchor] = useState(() => ({
+    year: currentYear,
+    monthIndex: currentMonthIndex,
+  }));
   const [weekStart, setWeekStart] = useState(currentWeekStart);
-  const [yearAnchor, setYearAnchor] = useState(current.getFullYear());
+  const [yearAnchor, setYearAnchor] = useState(currentYear);
   const [selectedKey, setSelectedKey] = useState<string | null>(null);
 
-  let rangeStart = '';
-  let rangeEnd = '';
-  let rangeRecords: WorkRecord[] = [];
-  let rangeLabel = '';
-  let isCurrentPeriod = false;
-  let currentLabel = '本月';
-  let resetLabel = '回到本月';
-  let previousLabel = '上个月';
-  let nextLabel = '下个月';
-
-  if (period === 'week') {
-    rangeStart = weekStart;
-    rangeEnd = addDaysISO(weekStart, 6);
-    rangeRecords = recordsInRange(records, rangeStart, rangeEnd);
-    rangeLabel = formatDateRangeCN(rangeStart, rangeEnd);
-    isCurrentPeriod = weekStart === currentWeekStart;
-    currentLabel = '本周';
-    resetLabel = '回到本周';
-    previousLabel = '上一周';
-    nextLabel = '下一周';
-  } else if (period === 'year') {
-    rangeStart = `${yearAnchor}-01-01`;
-    rangeEnd = `${yearAnchor}-12-31`;
-    rangeRecords = recordsInRange(records, rangeStart, rangeEnd);
-    rangeLabel = `${yearAnchor}年`;
-    isCurrentPeriod = yearAnchor === current.getFullYear();
-    currentLabel = '今年';
-    resetLabel = '回到今年';
-    previousLabel = '上一年';
-    nextLabel = '下一年';
-  } else {
-    rangeStart = `${monthKey(monthAnchor.year, monthAnchor.monthIndex)}-01`;
-    rangeEnd = `${monthKey(monthAnchor.year, monthAnchor.monthIndex)}-${pad2(
-      daysInMonth(monthAnchor.year, monthAnchor.monthIndex),
-    )}`;
-    rangeRecords = recordsInMonth(records, monthAnchor.year, monthAnchor.monthIndex);
-    rangeLabel = monthLabel(monthAnchor.year, monthAnchor.monthIndex);
-    isCurrentPeriod =
-      monthAnchor.year === current.getFullYear() &&
-      monthAnchor.monthIndex === current.getMonth();
-  }
-
-  const summary = summarizeRecords(rangeRecords);
-  const recordsByDate = new Map<string, WorkRecord[]>();
-  rangeRecords.forEach((record) => {
-    const list = recordsByDate.get(record.date) ?? [];
-    list.push(record);
-    recordsByDate.set(record.date, list);
-  });
-
-  let chartPoints: ChartPoint[] = [];
-  if (period === 'week') {
-    chartPoints = Array.from({ length: 7 }, (_, index) => {
-      const date = addDaysISO(rangeStart, index);
-      const daySummary = summarizeRecords(recordsByDate.get(date) ?? []);
-      const parsed = parseISODate(date);
-      return {
-        key: date,
-        axisLabel: WEEKDAY_LETTERS[index],
-        earnings: daySummary.earnings,
-        minutes: daySummary.minutes,
-        count: daySummary.shifts,
-        focusLabel: `${parsed.getMonth() + 1}月${parsed.getDate()}日`,
-      };
+  /**
+   * 派生数据集中在这里算：
+   * 金额滚动动画会连续触发重渲染，若每次都全量重算，记录一多就会掉帧。
+   * 依赖全部是原始值或稳定的 props，翻月/换周期才重算。
+   */
+  const view = useMemo<PeriodView>(() => {
+    const range = resolveRange({
+      period,
+      records,
+      today,
+      currentWeekStart,
+      weekStart,
+      yearAnchor,
+      monthYear: monthAnchor.year,
+      monthIndex: monthAnchor.monthIndex,
     });
-  } else if (period === 'year') {
-    chartPoints = Array.from({ length: 12 }, (_, index) => {
-      const month = index + 1;
-      const prefix = `${yearAnchor}-${pad2(month)}`;
-      const monthSummary = summarizeRecords(
-        rangeRecords.filter((record) => record.date.startsWith(prefix)),
-      );
-      return {
-        key: prefix,
-        axisLabel: String(month),
-        earnings: monthSummary.earnings,
-        minutes: monthSummary.minutes,
-        count: monthSummary.shifts,
-        focusLabel: `${month}月`,
-      };
-    });
-  } else {
-    const dayCount = daysInMonth(monthAnchor.year, monthAnchor.monthIndex);
-    const monthPrefix = monthKey(monthAnchor.year, monthAnchor.monthIndex);
-    chartPoints = Array.from({ length: dayCount }, (_, index) => {
-      const day = index + 1;
-      const date = `${monthPrefix}-${pad2(day)}`;
-      const daySummary = summarizeRecords(recordsByDate.get(date) ?? []);
-      const showAxis = day === 1 || day === 10 || day === 20 || day === dayCount;
-      return {
-        key: date,
-        axisLabel: showAxis ? String(day) : '',
-        earnings: daySummary.earnings,
-        minutes: daySummary.minutes,
-        count: daySummary.shifts,
-        focusLabel: `${monthAnchor.monthIndex + 1}月${day}日`,
-      };
-    });
-  }
+    return {
+      range,
+      summary: summarizeRecords(range.records),
+      chartPoints: buildChartPoints(range, period, monthAnchor.year, monthAnchor.monthIndex),
+      breakdownItems: buildBreakdown(range.records),
+    };
+  }, [
+    records,
+    period,
+    today,
+    currentWeekStart,
+    weekStart,
+    yearAnchor,
+    monthAnchor.year,
+    monthAnchor.monthIndex,
+  ]);
+
+  const { range, summary, chartPoints, breakdownItems } = view;
+  const { start: rangeStart, records: rangeRecords } = range;
 
   const todayKey = period === 'year' ? today.slice(0, 7) : today;
   const lastWithData = [...chartPoints].reverse().find((point) => point.count > 0)?.key;
@@ -205,10 +334,7 @@ export function Stats({
     chartPoints[0];
 
   const maxEarnings = Math.max(...chartPoints.map((point) => point.earnings), 1);
-  const peakEarnings = chartPoints.reduce(
-    (peak, point) => Math.max(peak, point.earnings),
-    0,
-  );
+  const peakEarnings = chartPoints.reduce((peak, point) => Math.max(peak, point.earnings), 0);
   const showGoal = period === 'month' && monthlyGoal > 0;
   const goalPercent = showGoal ? Math.round((summary.earnings / monthlyGoal) * 100) : 0;
   const goalRemaining = showGoal ? Math.max(0, monthlyGoal - summary.earnings) : 0;
@@ -229,7 +355,6 @@ export function Stats({
       : period === 'year'
         ? '按班次汇总今年收入'
         : '按班次汇总本月收入';
-  const emptyLabel = period === 'week' ? '本周' : period === 'year' ? '今年' : '本月';
   const settlementMonthKey = monthKey(monthAnchor.year, monthAnchor.monthIndex);
   const monthSettlement =
     period === 'month'
@@ -237,7 +362,8 @@ export function Stats({
       : undefined;
   const showSettlement =
     period === 'month' && (summary.shifts > 0 || Boolean(monthSettlement));
-  const monthForecast =
+
+  const monthForecast: MonthForecast | null =
     period === 'month'
       ? buildMonthForecast({
           records,
@@ -248,7 +374,7 @@ export function Stats({
         })
       : null;
   const showForecast = monthForecast !== null && monthForecast.upcomingPlans > 0;
-  const planReconciliation =
+  const planReconciliation: PlanReconciliation | null =
     period === 'month'
       ? buildPlanReconciliation({
           plans,
@@ -306,32 +432,11 @@ export function Stats({
     if (period === 'week') {
       setWeekStart(currentWeekStart);
     } else if (period === 'year') {
-      setYearAnchor(current.getFullYear());
+      setYearAnchor(currentYear);
     } else {
-      setMonthAnchor({ year: current.getFullYear(), monthIndex: current.getMonth() });
+      setMonthAnchor({ year: currentYear, monthIndex: currentMonthIndex });
     }
   };
-
-  const breakdown = new Map<
-    string,
-    { name: string; color: string; minutes: number; earnings: number; count: number }
-  >();
-  rangeRecords.forEach((record) => {
-    const existing = breakdown.get(record.shiftName) ?? {
-      name: record.shiftName,
-      color: record.shiftColor,
-      minutes: 0,
-      earnings: 0,
-      count: 0,
-    };
-    existing.minutes += recordMinutes(record);
-    existing.earnings += earningsOf(record);
-    existing.count += 1;
-    breakdown.set(record.shiftName, existing);
-  });
-  const breakdownItems = Array.from(breakdown.values()).sort(
-    (a, b) => b.earnings - a.earnings,
-  );
 
   const activeMeta =
     activePoint && activePoint.count > 0
@@ -365,12 +470,12 @@ export function Stats({
       </div>
 
       <RangeSwitcher
-        label={rangeLabel}
-        isCurrent={isCurrentPeriod}
-        currentLabel={currentLabel}
-        resetLabel={resetLabel}
-        previousLabel={previousLabel}
-        nextLabel={nextLabel}
+        label={range.label}
+        isCurrent={range.isCurrent}
+        currentLabel={range.currentLabel}
+        resetLabel={range.resetLabel}
+        previousLabel={range.previousLabel}
+        nextLabel={range.nextLabel}
         onPrevious={() => stepRange(-1)}
         onNext={() => stepRange(1)}
         onReset={resetRange}
@@ -601,7 +706,7 @@ export function Stats({
         </div>
         {breakdownItems.length === 0 ? (
           <div className="small-empty">
-            <p>{emptyLabel}还没有班次记录</p>
+            <p>{range.emptyLabel}还没有班次记录</p>
             <span>切换周期，或从「记录」页开始记一班。</span>
           </div>
         ) : (

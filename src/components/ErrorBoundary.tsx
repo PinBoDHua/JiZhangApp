@@ -1,5 +1,5 @@
 import { Component, type ErrorInfo, type ReactNode } from 'react';
-import { readRawStorageSnapshot } from '../storage';
+import { flushActiveWrites, readRawStorageSnapshot } from '../storage';
 import { downloadFile, todayISO } from '../utils';
 
 interface ErrorBoundaryProps {
@@ -29,6 +29,8 @@ export class ErrorBoundary extends Component<ErrorBoundaryProps, ErrorBoundarySt
   };
 
   handleExport = (): void => {
+    // 先把排队中的写入落盘，导出的才是用户最后一次编辑后的数据
+    flushActiveWrites();
     downloadFile(
       `工时账本-原始数据-${todayISO()}.json`,
       JSON.stringify(readRawStorageSnapshot(), null, 2),

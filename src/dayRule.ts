@@ -81,25 +81,41 @@ export interface ResolvedDayRule {
 }
 
 export function holidayOf(rule: DayPayRule | undefined, date: string): HolidayDate | null {
-  const normalized = normalizeDayPayRule(rule);
-  return normalized.holidays.find((item) => item.date === date) ?? null;
+  if (!rule || !Array.isArray(rule.holidays)) return null;
+  return rule.holidays.find((item) => item.date === date) ?? null;
 }
 
-/** 给定日期 → 应该带出的倍数与命中原因 */
+/**
+ * 给定日期 → 应该带出的倍数与命中原因。
+ *
+ * 表单每次输入都会调用它，所以这里直接读已归一化的规则，
+ * 不再整份 normalize（那样每敲一个键都要排序一遍节假日），
+ * 只对可能被手改坏的倍数字段做兜底。
+ */
 export function resolveDayRule(
   rule: DayPayRule | undefined,
   date: string,
 ): ResolvedDayRule {
-  const normalized = normalizeDayPayRule(rule);
-  if (!normalized.enabled) return { multiplier: 1, kind: 'workday', label: '' };
-  const holiday = normalized.holidays.find((item) => item.date === date);
+  if (!rule || rule.enabled !== true) return { multiplier: 1, kind: 'workday', label: '' };
+  const holidays = Array.isArray(rule.holidays) ? rule.holidays : [];
+  const holiday = holidays.find((item) => item.date === date);
   if (holiday) {
-    return { multiplier: normalized.holidayMultiplier, kind: 'holiday', label: holiday.label };
+    return {
+      multiplier: normalizeMultiplier(
+        rule.holidayMultiplier,
+        DEFAULT_DAY_PAY_RULE.holidayMultiplier,
+      ),
+      kind: 'holiday',
+      label: holiday.label || '节假日',
+    };
   }
   const weekday = parseISODate(date).getDay();
   if (weekday === 0 || weekday === 6) {
     return {
-      multiplier: normalized.weekendMultiplier,
+      multiplier: normalizeMultiplier(
+        rule.weekendMultiplier,
+        DEFAULT_DAY_PAY_RULE.weekendMultiplier,
+      ),
       kind: 'weekend',
       label: weekday === 6 ? '周六' : '周日',
     };

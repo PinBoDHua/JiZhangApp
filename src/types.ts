@@ -162,6 +162,20 @@ export interface AppPreferences {
   dayRule: DayPayRule;
 }
 
+/**
+ * 表单与导入共用的字段长度上限。
+ * 以前这些数字散落在各输入框的 maxLength 里，CSV 导入却没有限制，
+ * 现在集中在这里，表单与导入行为保持一致。
+ */
+export const FIELD_LIMITS = {
+  /** 记录 / 排班备注 */
+  note: 40,
+  /** 班次名称（记录、排班、CSV 导入） */
+  shiftName: 20,
+  /** 班次模板名称 */
+  templateName: 12,
+} as const;
+
 export const DEFAULT_PREFERENCES: AppPreferences = {
   monthlyGoal: 0,
   theme: 'system',

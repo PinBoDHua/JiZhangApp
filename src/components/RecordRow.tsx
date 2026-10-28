@@ -1,10 +1,10 @@
+import { memo } from 'react';
 import type { WorkRecord } from '../types';
 import {
   formatDuration,
   formatHours,
   formatMoney,
   isOvernight,
-  recordEarnings,
   recordPay,
 } from '../utils';
 import { MoonIcon } from './Icons';
@@ -14,7 +14,11 @@ interface RecordRowProps {
   onClick: (record: WorkRecord) => void;
 }
 
-export function RecordRow({ record, onClick }: RecordRowProps) {
+/**
+ * 记录行：首页与日历的长列表里会重复出现几十上百次。
+ * 记录对象不可变、onClick 由 App 用 useCallback 固定，因此 memo 后翻页/搜索更省。
+ */
+export const RecordRow = memo(function RecordRow({ record, onClick }: RecordRowProps) {
   const pay = recordPay(record);
   const minutes = pay.minutes;
   const overnight = isOvernight(record.start, record.end);
@@ -56,8 +60,8 @@ export function RecordRow({ record, onClick }: RecordRowProps) {
       </span>
       <span className="record-money">
         <span>¥</span>
-        {formatMoney(recordEarnings(record))}
+        {formatMoney(pay.total)}
       </span>
     </button>
   );
-}
+});

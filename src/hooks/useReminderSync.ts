@@ -9,6 +9,7 @@ import {
   syncPlannedReminders,
   type ReminderStatus,
 } from '../reminderService';
+import { isISODate } from '../storage';
 import type { PlannedShift } from '../types';
 
 interface ReminderSyncOptions {
@@ -74,7 +75,8 @@ export function useReminderSync({
 
     void LocalNotifications.addListener('localNotificationActionPerformed', (action) => {
       const extra = action.notification.extra as { type?: string; date?: string } | undefined;
-      if (extra?.type !== 'shift-reminder' || typeof extra.date !== 'string') return;
+      // 通知的 extra 来自系统，可能与当前数据不同步：日期不合法时直接忽略，避免日历跳到 NaN 年月
+      if (!extra || extra.type !== 'shift-reminder' || !isISODate(extra.date)) return;
       openRef.current(extra.date);
     }).then(keep);
 
