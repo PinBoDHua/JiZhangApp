@@ -16,8 +16,9 @@ dist-ssr
 android/keystore/
 android/keystore.properties
 
-# Release packages
+# Release packages and publishing notes (kept local, uploaded manually to GitHub Releases)
 release/*.apk
+release/*.md
 
 # Local motion verification screenshots
 artifacts/
