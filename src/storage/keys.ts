@@ -17,6 +17,8 @@ const ACTIVE_SHIFT_KEY = 'shift-ledger.active-shift.v2';
 const SETTLEMENTS_KEY = 'shift-ledger.settlements.v2';
 const PLANS_KEY = 'shift-ledger.plans.v2';
 const PLAN_HISTORY_KEY = 'shift-ledger.plan-history.v2';
+/** 损坏数据的恢复副本：原文另存一份，避免被后续写入覆盖后彻底找不回 */
+const RECOVERY_KEY = 'shift-ledger.recovery.v2';
 
 const LEGACY_RECORDS_KEY = 'shift-ledger.records.v1';
 const LEGACY_TEMPLATES_KEY = 'shift-ledger.templates.v1';
@@ -61,7 +63,7 @@ export const KEY_PAIRS: readonly (readonly [string, string])[] = [
   [PLAN_HISTORY_KEY, LEGACY_PLAN_HISTORY_KEY],
 ];
 
-const ALL_KEYS = [META_KEY, ...KEY_PAIRS.flatMap(([key, legacy]) => [key, legacy])];
+const ALL_KEYS = [META_KEY, RECOVERY_KEY, ...KEY_PAIRS.flatMap(([key, legacy]) => [key, legacy])];
 const LEDGER_KEY_SET = new Set(ALL_KEYS);
 
 /** 只认本应用写下的键，避免其它站点的存储事件触发无谓重载 */
@@ -70,11 +72,26 @@ export function isLedgerStorageKey(key: string | null): boolean {
 }
 
 export const STORAGE_ERROR_EVENT = 'shift-ledger:storage-error';
+/** 读到损坏 JSON 且已保全原文时触发，界面据此提示用户导出副本 */
+export const STORAGE_RECOVERY_EVENT = 'shift-ledger:storage-recovery';
 
 export interface StorageErrorDetail {
   key: string;
   message: string;
 }
+
+export interface CorruptEntry {
+  /** 出问题的存储键 */
+  key: string;
+  /** 保全时间 */
+  at: number;
+  /** 原始文本，未做任何加工 */
+  raw: string;
+}
+
+export type RecoveryMap = Record<string, CorruptEntry>;
+
+export const RECOVERY_STORAGE_KEY = RECOVERY_KEY;
 
 export interface StorageMeta {
   schemaVersion: number;
@@ -132,9 +149,62 @@ export function readJson<T>(key: string, legacyKey: string, fallback: T): T {
   try {
     const raw = localStorage.getItem(key) ?? localStorage.getItem(legacyKey);
     if (!raw) return fallback;
-    return JSON.parse(raw) as T;
+    try {
+      return JSON.parse(raw) as T;
+    } catch {
+      // 解析失败时先保全原文：下面返回的兜底值一旦被用户编辑写回，
+      // 原始内容就再也找不回来了
+      preserveCorrupt(key, raw);
+      return fallback;
+    }
   } catch {
     return fallback;
+  }
+}
+
+/** 读出全部恢复副本；内容坏掉时按空处理，恢复副本本身不应阻断启动 */
+export function readRecoveryMap(): RecoveryMap {
+  if (!hasLocalStorage()) return {};
+  try {
+    const raw = localStorage.getItem(RECOVERY_KEY);
+    if (!raw) return {};
+    const parsed = JSON.parse(raw) as unknown;
+    if (!parsed || typeof parsed !== 'object' || Array.isArray(parsed)) return {};
+    const map: RecoveryMap = {};
+    Object.entries(parsed as Record<string, unknown>).forEach(([key, value]) => {
+      if (!value || typeof value !== 'object') return;
+      const row = value as Record<string, unknown>;
+      if (typeof row.raw !== 'string') return;
+      map[key] = {
+        key,
+        at: typeof row.at === 'number' && Number.isFinite(row.at) ? row.at : 0,
+        raw: row.raw,
+      };
+    });
+    return map;
+  } catch {
+    return {};
+  }
+}
+
+/** 用户导出副本后清空，下次启动不再重复提醒 */
+export function clearRecovery(): void {
+  removeStorageKey(RECOVERY_KEY);
+}
+
+/** 同一份损坏内容只保全、通知一次；换成新的损坏内容会覆盖旧副本 */
+function preserveCorrupt(key: string, raw: string): void {
+  try {
+    const map = readRecoveryMap();
+    if (map[key]?.raw === raw) return;
+    map[key] = { key, at: Date.now(), raw };
+    localStorage.setItem(RECOVERY_KEY, JSON.stringify(map));
+    if (typeof window === 'undefined' || typeof window.dispatchEvent !== 'function') return;
+    window.dispatchEvent(
+      new CustomEvent<{ key: string }>(STORAGE_RECOVERY_EVENT, { detail: { key } }),
+    );
+  } catch {
+    // 存储已满或被禁用：保全失败也不能影响正常读取
   }
 }
 
@@ -167,8 +237,6 @@ export function removeStorageKey(key: string): void {
     reportStorageError(key, error);
   }
 }
-
-export const LEGACY_ACTIVE_SHIFT = LEGACY_ACTIVE_SHIFT_KEY;
 
 /**
  * 原样导出本机数据，供异常兜底或排查使用：不经过任何校验，坏数据也能拿走。

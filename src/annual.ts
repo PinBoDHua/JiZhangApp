@@ -1,4 +1,5 @@
 import type { WorkRecord } from './types';
+import { round2 } from './num';
 import {
   addDaysISO,
   daysInMonth,
@@ -49,8 +50,6 @@ export interface AnnualSummary {
   longestStreak: number;
   topShift: AnnualShiftSummary | null;
 }
-
-const round2 = (value: number): number => Math.round(value * 100) / 100;
 
 function isLeapYear(year: number): boolean {
   return (year % 4 === 0 && year % 100 !== 0) || year % 400 === 0;

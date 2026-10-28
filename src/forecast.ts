@@ -1,4 +1,5 @@
 import type { PlannedShift, WorkRecord } from './types';
+import { round2 } from './num';
 import { isPlanPast, planPay, recordPay } from './utils';
 
 export interface MonthForecast {
@@ -33,8 +34,6 @@ export interface MonthForecastInput {
   now: Date;
   goal?: number;
 }
-
-const round2 = (value: number): number => Math.round(value * 100) / 100;
 
 /**
  * 本月收入预测：已入账记录 + 尚未到期的排班。

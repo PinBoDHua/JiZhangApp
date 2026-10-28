@@ -1,4 +1,5 @@
 import type { PlannedShift, WorkRecord } from './types';
+import { round2 } from './num';
 import {
   addDaysISO,
   getWeekRange,
@@ -30,50 +31,44 @@ export interface PeriodTotals {
   shifts: number;
 }
 
-const round2 = (value: number): number => Math.round(value * 100) / 100;
-
-/** 一次遍历按日期汇总收入与工时（每条记录只计薪一次） */
-export function summarizeByDate(records: WorkRecord[]): Map<string, DayTotal> {
+/**
+ * 按日期汇总的公共实现。
+ *
+ * 记录与排班的汇总规则完全一致（同一天累加收入、工时、班次），
+ * 区别只在「用哪套计薪结果」。以前两份代码是复制的，改动一处很容易漏掉另一处。
+ */
+function summarizeByDateWith<T extends { date: string }>(
+  items: T[],
+  payOf: (item: T) => { total: number; minutes: number },
+): Map<string, DayTotal> {
   const totals = new Map<string, DayTotal>();
-  records.forEach((record) => {
-    const pay = recordPay(record);
-    const current = totals.get(record.date);
+  items.forEach((item) => {
+    const pay = payOf(item);
+    const current = totals.get(item.date);
     if (current) {
       current.earnings += pay.total;
       current.minutes += pay.minutes;
       current.shifts += 1;
-    } else {
-      totals.set(record.date, {
-        date: record.date,
-        earnings: pay.total,
-        minutes: pay.minutes,
-        shifts: 1,
-      });
+      return;
     }
+    totals.set(item.date, {
+      date: item.date,
+      earnings: pay.total,
+      minutes: pay.minutes,
+      shifts: 1,
+    });
   });
   return totals;
 }
 
+/** 一次遍历按日期汇总收入与工时（每条记录只计薪一次） */
+export function summarizeByDate(records: WorkRecord[]): Map<string, DayTotal> {
+  return summarizeByDateWith(records, recordPay);
+}
+
 /** 排班也按日期汇总：用于月历「预计收入」与当天排班合计 */
 export function summarizePlansByDate(plans: PlannedShift[]): Map<string, DayTotal> {
-  const totals = new Map<string, DayTotal>();
-  plans.forEach((plan) => {
-    const pay = planPay(plan);
-    const current = totals.get(plan.date);
-    if (current) {
-      current.earnings += pay.total;
-      current.minutes += pay.minutes;
-      current.shifts += 1;
-    } else {
-      totals.set(plan.date, {
-        date: plan.date,
-        earnings: pay.total,
-        minutes: pay.minutes,
-        shifts: 1,
-      });
-    }
-  });
-  return totals;
+  return summarizeByDateWith(plans, planPay);
 }
 
 /** 把若干天的汇总合并成一个周期汇总（只统计有记录的日子） */

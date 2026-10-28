@@ -6,11 +6,11 @@ import {
   type TouchEvent as ReactTouchEvent,
 } from 'react';
 import type { PlannedShift, ShiftTemplate, WorkRecord } from '../types';
+import { round2 } from '../num';
 import { isPlanMissed } from '../planStats';
 import { summarizeByDate, summarizePlansByDate } from '../overview';
 import { isISODate } from '../storage';
 import { hapticTap } from '../feedback';
-import { useAnimatedNumber } from '../hooks/useAnimatedNumber';
 import {
   canStartPlan,
   daysInMonth,
@@ -40,6 +40,7 @@ import {
   PlusIcon,
   RepeatIcon,
 } from './Icons';
+import { AnimatedValue } from './AnimatedValue';
 import { RangeSwitcher } from './RangeSwitcher';
 import { RecordRow } from './RecordRow';
 import { useClock } from '../useClock';
@@ -273,7 +274,7 @@ export function Calendar({
       recordSummary: summarizeRecords(monthRecords),
       planTotals,
       plannedMinutes,
-      plannedEarnings: Math.round(plannedEarnings * 100) / 100,
+      plannedEarnings: round2(plannedEarnings),
       plannedDays: planTotals.size,
     };
   }, [records, plans, anchor.year, anchor.monthIndex, prefix]);
@@ -308,10 +309,8 @@ export function Calendar({
   const selectedPlanTotals = planTotals.get(selectedDate);
   const selectedPlannedMinutes = selectedPlanTotals?.minutes ?? 0;
   const selectedPlannedEarnings = selectedPlanTotals?.earnings ?? 0;
-  const shownMonthEarnings = useAnimatedNumber(
-    mode === 'records' ? totalEarnings : plannedEarnings,
-    { resetKey: `${anchor.year}-${anchor.monthIndex}-${mode}` },
-  );
+  const monthEarnings = mode === 'records' ? totalEarnings : plannedEarnings;
+  const monthEarningsKey = `${anchor.year}-${anchor.monthIndex}-${mode}`;
 
   useEffect(
     () => () => {
@@ -422,12 +421,17 @@ export function Calendar({
     finishSwipe(0, start?.horizontal ?? false);
   };
 
-  const cells = Array.from({ length: cellCount }, (_, index) => {
-    const day = index - leadingBlanks + 1;
-    if (day < 1 || day > dayCount) return null;
-    const date = `${prefix}-${pad2(day)}`;
-    return { date, day };
-  });
+  // 月历格子只跟「哪个月、这个月有几天」有关：选中日期、滑动动画不该让它重算
+  const cells = useMemo(
+    () =>
+      Array.from({ length: cellCount }, (_, index) => {
+        const day = index - leadingBlanks + 1;
+        if (day < 1 || day > dayCount) return null;
+        const date = `${prefix}-${pad2(day)}`;
+        return { date, day };
+      }),
+    [cellCount, leadingBlanks, dayCount, prefix],
+  );
 
   const openDate = (date: string) => {
     setSelectedDate(date);
@@ -529,7 +533,7 @@ export function Calendar({
               <span>当月收入</span>
               <strong>
                 <small>¥</small>
-                {formatMoney(shownMonthEarnings)}
+                <AnimatedValue value={monthEarnings} resetKey={monthEarningsKey} />
               </strong>
             </div>
             <div className="calendar-summary-meta">
@@ -544,7 +548,7 @@ export function Calendar({
               <span>当月排班 · 预计</span>
               <strong>
                 <small>¥</small>
-                {formatMoney(shownMonthEarnings)}
+                <AnimatedValue value={monthEarnings} resetKey={monthEarningsKey} />
               </strong>
             </div>
             <div className="calendar-summary-meta">

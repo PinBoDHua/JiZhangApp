@@ -1,0 +1,517 @@
+/* 工时账本样式 · 分段计薪、收入预测与年度复盘
+   原 index.css 第 5664–6177 行，按原顺序拆出；
+   全局样式依赖先后顺序覆盖，改动前请确认没有跨文件的同名选择器。 */
+/* ---------- Segmented pay, forecast & annual review (v2.0) ---------- */
+
+.field-switch-row {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 10px;
+}
+
+.field-switch-row .field-label {
+  flex: 1;
+  flex-wrap: wrap;
+}
+
+.overtime-field {
+  gap: 10px;
+  padding: 12px 13px;
+  border: 1px dashed var(--line-strong);
+  border-radius: 16px;
+  background: var(--surface);
+}
+
+.overtime-field .switch {
+  transform: scale(0.92);
+  transform-origin: right center;
+}
+
+.overtime-inputs {
+  gap: 10px;
+}
+
+.overtime-hint {
+  color: var(--ink-soft);
+}
+
+.mini-tag.is-overtime {
+  border-color: rgba(216, 163, 59, 0.3);
+  background: rgba(216, 163, 59, 0.12);
+  color: var(--eyebrow);
+}
+
+.next-plan-overtime {
+  padding-left: 6px;
+  border-left: 1px solid var(--line);
+  color: var(--eyebrow);
+  font-size: 8.5px;
+  white-space: nowrap;
+}
+
+.hero-forecast {
+  display: flex;
+  align-items: baseline;
+  justify-content: space-between;
+  gap: 10px;
+  margin-top: 12px;
+  padding-top: 11px;
+  border-top: 1px solid rgba(244, 235, 217, 0.13);
+  color: rgba(244, 235, 217, 0.62);
+  font-size: 9.5px;
+  letter-spacing: 0.02em;
+}
+
+.hero-forecast strong {
+  display: inline-flex;
+  align-items: baseline;
+  gap: 2px;
+  color: var(--gold);
+  font-family: var(--font-serif);
+  font-size: 17px;
+  font-weight: 600;
+  font-variant-numeric: tabular-nums;
+  letter-spacing: -0.01em;
+}
+
+.hero-forecast strong small {
+  font-family: var(--font-sans);
+  font-size: 9.5px;
+  font-weight: 450;
+  opacity: 0.8;
+}
+
+.hero-goal-bar {
+  position: relative;
+}
+
+.hero-goal-bar i {
+  position: absolute;
+  top: 0;
+  bottom: 0;
+  border-radius: inherit;
+  background: rgba(232, 198, 116, 0.42);
+  transition: width 0.45s cubic-bezier(0.22, 1, 0.36, 1),
+    left 0.45s cubic-bezier(0.22, 1, 0.36, 1);
+}
+
+.hero-goal.is-projected .hero-goal-bar i {
+  background: rgba(255, 244, 214, 0.55);
+}
+
+.hero-goal.is-projected p {
+  color: rgba(244, 235, 217, 0.66);
+}
+
+.stats-total-foot {
+  flex-wrap: wrap;
+  row-gap: 4px;
+}
+
+.stats-total-foot .is-overtime {
+  color: rgba(255, 247, 238, 0.95);
+  font-weight: 600;
+}
+
+.forecast-panel {
+  position: relative;
+  overflow: hidden;
+}
+
+.forecast-panel::after {
+  content: '';
+  position: absolute;
+  top: -40px;
+  right: -30px;
+  width: 130px;
+  height: 130px;
+  border-radius: 50%;
+  background: radial-gradient(circle, rgba(216, 163, 59, 0.14), transparent 68%);
+  pointer-events: none;
+}
+
+.forecast-badge {
+  flex: none;
+  padding: 3px 8px;
+  border: 1px solid rgba(216, 163, 59, 0.3);
+  border-radius: 999px;
+  background: rgba(216, 163, 59, 0.08);
+  color: var(--eyebrow);
+  font-size: 8.5px;
+  font-weight: 600;
+  letter-spacing: 0.04em;
+}
+
+.forecast-amount {
+  display: flex;
+  align-items: baseline;
+  gap: 5px;
+  margin: 12px 0 11px;
+  font-family: var(--font-serif);
+  font-size: 32px;
+  font-weight: 600;
+  line-height: 1;
+  letter-spacing: -0.025em;
+  font-variant-numeric: tabular-nums;
+}
+
+.forecast-amount span {
+  color: var(--gold);
+  font-family: var(--font-sans);
+  font-size: 14px;
+  font-weight: 450;
+}
+
+.forecast-split {
+  display: grid;
+  grid-template-columns: 1fr 1fr;
+  gap: 8px;
+}
+
+.forecast-split-item {
+  min-width: 0;
+  padding: 9px 10px;
+  border: 1px solid var(--line);
+  border-radius: 13px;
+  background: var(--paper);
+}
+
+.forecast-split-item > span {
+  display: block;
+  color: var(--muted);
+  font-size: 8.5px;
+}
+
+.forecast-split-item strong {
+  display: block;
+  margin-top: 3px;
+  font-size: 14px;
+  font-variant-numeric: tabular-nums;
+}
+
+.forecast-split-item small {
+  display: block;
+  margin-top: 2px;
+  color: var(--muted);
+  font-size: 8px;
+  font-variant-numeric: tabular-nums;
+}
+
+.forecast-split-item.is-upcoming {
+  border-color: rgba(216, 163, 59, 0.28);
+  background: rgba(216, 163, 59, 0.07);
+}
+
+.forecast-split-item.is-upcoming strong {
+  color: var(--eyebrow);
+}
+
+.forecast-goal {
+  margin-top: 12px;
+  padding-top: 10px;
+  border-top: 1px solid var(--line-soft);
+}
+
+.forecast-goal-head {
+  display: flex;
+  align-items: baseline;
+  justify-content: space-between;
+  gap: 8px;
+  color: var(--muted);
+  font-size: 8.5px;
+}
+
+.forecast-goal-head strong {
+  color: var(--accent-deep);
+  font-size: 10px;
+  font-variant-numeric: tabular-nums;
+}
+
+.forecast-goal-bar {
+  position: relative;
+  height: 5px;
+  margin: 7px 0 5px;
+  overflow: hidden;
+  border-radius: 999px;
+  background: var(--line-soft);
+}
+
+.forecast-goal-bar span {
+  display: block;
+  height: 100%;
+  border-radius: inherit;
+  background: linear-gradient(90deg, var(--accent), var(--gold));
+}
+
+.forecast-goal-bar i {
+  position: absolute;
+  top: 0;
+  bottom: 0;
+  border-radius: inherit;
+  background: rgba(216, 163, 59, 0.5);
+}
+
+.forecast-goal p {
+  margin: 0;
+  color: var(--muted);
+  font-size: 8.5px;
+  font-variant-numeric: tabular-nums;
+}
+
+.forecast-goal.is-done p {
+  color: var(--eyebrow);
+  font-weight: 600;
+}
+
+.year-review-panel {
+  --heat-0: #ece6da;
+  --heat-1: #e4d4ad;
+  --heat-2: #d9ba77;
+  --heat-3: #c99745;
+  --heat-4: #b07028;
+}
+
+html[data-theme='dark'] .year-review-panel {
+  --heat-0: #232d26;
+  --heat-1: #3b3a24;
+  --heat-2: #5d4b22;
+  --heat-3: #8a672b;
+  --heat-4: #c18f3a;
+}
+
+.year-export {
+  flex: none;
+}
+
+.year-highlights {
+  display: grid;
+  grid-template-columns: 1fr 1fr;
+  gap: 8px;
+  margin-top: 12px;
+}
+
+.year-highlight {
+  min-width: 0;
+  padding: 9px 11px;
+  border: 1px solid var(--line);
+  border-radius: 13px;
+  background: var(--paper);
+}
+
+.year-highlight span {
+  display: block;
+  color: var(--muted);
+  font-size: 8.5px;
+}
+
+.year-highlight strong {
+  display: block;
+  margin-top: 3px;
+  font-size: 15px;
+  font-weight: 650;
+  font-variant-numeric: tabular-nums;
+  letter-spacing: -0.01em;
+}
+
+.year-highlight small {
+  margin-left: 2px;
+  color: var(--muted);
+  font-size: 9px;
+  font-weight: 400;
+}
+
+.year-heatmap-scroll {
+  margin-top: 14px;
+  padding-bottom: 2px;
+  overflow-x: auto;
+  overscroll-behavior-x: contain;
+}
+
+.year-heatmap {
+  display: flex;
+  flex-direction: column;
+  gap: 3px;
+  min-width: 292px;
+}
+
+.heat-row {
+  display: grid;
+  grid-template-columns: 13px repeat(31, 1fr);
+  gap: 3px;
+  align-items: center;
+}
+
+.heat-month {
+  padding-right: 2px;
+  color: var(--muted);
+  font-size: 7.5px;
+  text-align: right;
+  font-variant-numeric: tabular-nums;
+}
+
+.heat-cell {
+  min-width: 0;
+  padding: 0;
+  border: 0;
+  border-radius: 2.5px;
+  background: var(--heat-0);
+  appearance: none;
+  aspect-ratio: 1;
+  cursor: pointer;
+  transition: filter 0.14s ease;
+}
+
+button.heat-cell:hover,
+button.heat-cell:focus-visible {
+  filter: brightness(1.12) saturate(1.1);
+}
+
+.heat-cell.is-empty {
+  cursor: default;
+  background: transparent;
+}
+
+.heat-cell.level-0 {
+  background: var(--heat-0);
+}
+
+.heat-cell.level-1 {
+  background: var(--heat-1);
+}
+
+.heat-cell.level-2 {
+  background: var(--heat-2);
+}
+
+.heat-cell.level-3 {
+  background: var(--heat-3);
+}
+
+.heat-cell.level-4 {
+  background: var(--heat-4);
+}
+
+.heat-cell.is-selected {
+  outline: 1.5px solid var(--ink);
+  outline-offset: 1px;
+}
+
+.heat-legend {
+  display: flex;
+  align-items: center;
+  justify-content: flex-end;
+  gap: 4px;
+  margin-top: 8px;
+  color: var(--muted);
+  font-size: 8px;
+}
+
+.heat-legend .heat-cell {
+  width: 10px;
+  height: 10px;
+  flex: none;
+  aspect-ratio: auto;
+  cursor: default;
+}
+
+.year-day-detail {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: baseline;
+  gap: 6px 8px;
+  margin-top: 10px;
+  padding: 9px 11px;
+  border: 1px solid var(--line);
+  border-radius: 12px;
+  background: var(--paper);
+  font-size: 9.5px;
+}
+
+.year-day-detail strong {
+  font-size: 10.5px;
+  font-weight: 650;
+}
+
+.year-day-detail span {
+  color: var(--muted);
+  font-variant-numeric: tabular-nums;
+}
+
+.year-records {
+  display: grid;
+  grid-template-columns: 1fr 1fr;
+  gap: 7px;
+  margin-top: 10px;
+}
+
+.year-record-item {
+  min-width: 0;
+  padding: 8px 10px;
+  border: 1px solid var(--line-soft);
+  border-radius: 11px;
+  background: var(--paper);
+}
+
+.year-record-item > span {
+  display: block;
+  color: var(--muted);
+  font-size: 8px;
+}
+
+.year-record-item strong {
+  display: block;
+  margin-top: 3px;
+  overflow: hidden;
+  font-size: 10px;
+  font-weight: 600;
+  white-space: nowrap;
+  text-overflow: ellipsis;
+  font-variant-numeric: tabular-nums;
+}
+
+.year-record-item small {
+  margin-left: 2px;
+  color: var(--muted);
+  font-size: 8px;
+  font-weight: 400;
+}
+
+.year-overtime {
+  display: flex;
+  justify-content: space-between;
+  gap: 8px;
+  margin: 10px 0 0;
+  padding-top: 9px;
+  border-top: 1px dashed var(--line);
+  color: var(--eyebrow);
+  font-size: 8.5px;
+  font-variant-numeric: tabular-nums;
+}
+
+.year-overtime span {
+  color: var(--muted);
+}
+
+.year-empty {
+  margin: 14px 0 0;
+  color: var(--muted);
+  font-size: 10px;
+  text-align: center;
+}
+
+@media (max-width: 370px) {
+  .year-highlights,
+  .year-records {
+    grid-template-columns: 1fr;
+  }
+
+  .forecast-split {
+    grid-template-columns: 1fr;
+  }
+
+  .forecast-amount {
+    font-size: 28px;
+  }
+}
+

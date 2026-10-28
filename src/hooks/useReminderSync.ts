@@ -31,16 +31,26 @@ export function useReminderSync({
   onOpenPlanDate,
 }: ReminderSyncOptions) {
   const [status, setStatus] = useState<ReminderStatus>(() => initialReminderStatus());
+  // 保底路径要拿到「上一次有效的状态」，用 ref 而不是把 status 塞进依赖里
+  const statusRef = useRef(status);
+  const commitStatus = useCallback((next: ReminderStatus) => {
+    statusRef.current = next;
+    setStatus(next);
+  }, []);
 
   useEffect(() => {
     let disposed = false;
-    void syncPlannedReminders(plans, enabled, leadMinutes).then((next) => {
-      if (!disposed) setStatus(next);
-    });
+    void syncPlannedReminders(plans, enabled, leadMinutes)
+      .then((next) => {
+        if (!disposed) commitStatus(next);
+      })
+      .catch(() => {
+        // 原生插件在部分机型上会直接 reject：保留上次状态，不让异常冒成未捕获拒绝
+      });
     return () => {
       disposed = true;
     };
-  }, [plans, enabled, leadMinutes]);
+  }, [plans, enabled, leadMinutes, commitStatus]);
 
   // 原生监听只注册一次，回前台时从 ref 取最新的排班和设置
   const inputRef = useRef({ plans, enabled, leadMinutes });
@@ -68,9 +78,14 @@ export function useReminderSync({
     void CapacitorApp.addListener('appStateChange', ({ isActive }) => {
       if (!isActive) return;
       const current = inputRef.current;
-      void syncPlannedReminders(current.plans, current.enabled, current.leadMinutes).then(
-        setStatus,
-      );
+      void syncPlannedReminders(current.plans, current.enabled, current.leadMinutes)
+        .then((next) => {
+          statusRef.current = next;
+          setStatus(next);
+        })
+        .catch(() => {
+          // 回前台重建通知失败时维持原状态，用户仍可在设置页手动重试
+        });
     }).then(keep);
 
     void LocalNotifications.addListener('localNotificationActionPerformed', (action) => {
@@ -86,17 +101,26 @@ export function useReminderSync({
     };
   }, []);
 
+  // 通知权限流程同样兜底：原生调用失败时返回上一次状态，调用方不必再包 try/catch
   const requestPermission = useCallback(async () => {
-    const next = await requestReminderPermission();
-    setStatus(next);
-    return next;
-  }, []);
+    try {
+      const next = await requestReminderPermission();
+      commitStatus(next);
+      return next;
+    } catch {
+      return statusRef.current;
+    }
+  }, [commitStatus]);
 
   const requestExactAlarm = useCallback(async () => {
-    const next = await requestExactAlarmSetting();
-    setStatus(next);
-    return next;
-  }, []);
+    try {
+      const next = await requestExactAlarmSetting();
+      commitStatus(next);
+      return next;
+    } catch {
+      return statusRef.current;
+    }
+  }, [commitStatus]);
 
   return { status, requestPermission, requestExactAlarm };
 }

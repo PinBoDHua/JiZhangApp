@@ -1,0 +1,36 @@
+/* 工时账本样式 · 记录列表分批展开
+   原 index.css 第 5631–5663 行，按原顺序拆出；
+   全局样式依赖先后顺序覆盖，改动前请确认没有跨文件的同名选择器。 */
+/* ---------- Progressive record list ---------- */
+
+.load-more {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  gap: 7px;
+  width: 100%;
+  margin-top: 14px;
+  padding: 11px 16px;
+  border: 1px dashed var(--line-strong);
+  border-radius: 14px;
+  background: transparent;
+  color: var(--ink-soft);
+  font-family: inherit;
+  font-size: 11px;
+  font-weight: 650;
+  cursor: pointer;
+  transition: background 0.16s ease, border-color 0.16s ease;
+}
+
+.load-more:hover {
+  background: var(--hover-bg);
+  border-color: var(--line-strong);
+}
+
+.load-more span {
+  color: var(--muted);
+  font-size: 10px;
+  font-weight: 500;
+  font-variant-numeric: tabular-nums;
+}
+

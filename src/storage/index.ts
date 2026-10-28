@@ -39,14 +39,18 @@ import {
 export { BACKUP_LIMITS, MAX_BACKUP_BYTES, backupFileError, buildBackup, parseBackup, summarizeBackup } from './backup';
 export type { BackupInput, BackupSummary } from './backup';
 export {
+  RECOVERY_STORAGE_KEY,
   SCHEMA_VERSION,
   STORAGE_ERROR_EVENT,
   STORAGE_KEYS,
+  STORAGE_RECOVERY_EVENT,
+  clearRecovery,
   isLedgerStorageKey,
   migrateStorage,
   readRawStorageSnapshot,
+  readRecoveryMap,
 } from './keys';
-export type { StorageErrorDetail, StorageMeta, StorageSlice } from './keys';
+export type { CorruptEntry, RecoveryMap, StorageErrorDetail, StorageMeta, StorageSlice } from './keys';
 export {
   WRITE_DELAY_MS,
   createWriteQueue,

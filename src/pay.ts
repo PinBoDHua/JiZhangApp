@@ -1,15 +1,19 @@
+import { round2 } from './num';
 import type { OvertimeRule } from './types';
 
 /** 默认每天 8 小时标准工时，超出部分按 1.5 倍计加班。 */
 export const DEFAULT_STANDARD_MINUTES = 8 * 60;
 export const DEFAULT_OVERTIME_MULTIPLIER = 1.5;
+/**
+ * 加班倍数的输入下限（UI 用）。
+ *
+ * 校验刻意比它宽松（只要求 > 1）：备份文件可能来自手工修改或更早的版本，
+ * 因为「1.1 倍」就判定整条加班规则无效、把金额悄悄改成整班计薪，代价比宽容更大。
+ */
+export const MIN_OVERTIME_MULTIPLIER = 1.25;
 export const MIN_STANDARD_MINUTES = 30;
 export const MAX_STANDARD_MINUTES = 24 * 60;
-export const MIN_OVERTIME_MULTIPLIER = 1.25;
 export const MAX_OVERTIME_MULTIPLIER = 10;
-
-/** 加班倍数候选项，与整班计薪倍数分开，避免出现「加班 1×」 */
-export const OVERTIME_MULTIPLIER_OPTIONS = [1.25, 1.5, 1.75, 2, 3] as const;
 
 export interface PayBreakdown {
   /** 计薪的有效分钟数（已扣休息） */
@@ -31,8 +35,6 @@ export interface PayInput {
   multiplier: number;
   overtime?: OvertimeRule | null;
 }
-
-const round2 = (value: number): number => Math.round(value * 100) / 100;
 
 /** 备份/本地数据校验：加班规则必须落在应用能写出的范围内 */
 export function isValidOvertimeRule(value: unknown): value is OvertimeRule {
@@ -60,7 +62,7 @@ export function normalizeOvertimeRule(
   if (!isValidOvertimeRule(rule)) return null;
   return {
     standardMinutes: Math.round(rule.standardMinutes),
-    multiplier: Math.round(rule.multiplier * 100) / 100,
+    multiplier: round2(rule.multiplier),
   };
 }
 

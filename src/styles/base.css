@@ -1,0 +1,305 @@
+/* 工时账本样式 · 基础：设计变量、重置与通用布局
+   原 index.css 第 1–302 行，按原顺序拆出；
+   全局样式依赖先后顺序覆盖，改动前请确认没有跨文件的同名选择器。 */
+:root {
+  --paper: #f4f0e7;
+  --paper-deep: #ede7db;
+  --surface: #fbf8f2;
+  --white: #fffdf8;
+  --ink: #17241e;
+  --ink-soft: #45544b;
+  --muted: #666d63;
+  --line: #e3dccf;
+  --line-strong: #d3c9b8;
+  --line-soft: #ede7dc;
+  --accent: #d45a3c;
+  --accent-deep: #b2462c;
+  --gold: #d8a33b;
+  --pine: #274236;
+  --cream: #f4ebd9;
+  --danger: #a33f28;
+  --radius-xl: 28px;
+  --radius-lg: 22px;
+  --radius-md: 16px;
+  --shadow-card: 0 18px 40px -30px rgba(23, 36, 30, 0.45);
+  --font-sans: "Avenir Next", "PingFang SC", "Hiragino Sans GB", "Microsoft YaHei", system-ui, -apple-system, sans-serif;
+  --font-serif: "Iowan Old Style", "Palatino Linotype", "Songti SC", "Noto Serif SC", Georgia, serif;
+  --tint-base: #fffdf8;
+  --hover-bg: rgba(23, 36, 30, 0.028);
+  --focus-color: #274236;
+  --placeholder: #8b8477;
+  --eyebrow: #8a6517;
+  --btn-bg: #17241e;
+  --btn-fg: #f4ebd9;
+  --nav-active-bg: #17241e;
+  --nav-active-fg: #f4ebd9;
+  --sheet-header-bg: rgba(244, 240, 231, 0.96);
+  --nav-bg: rgba(247, 243, 235, 0.92);
+  --toast-bg: #17241e;
+  --toast-fg: #f4ebd9;
+  --bar-empty: #e6dfd2;
+  --bar-data: #7a9183;
+  --bar-hover: #526b5d;
+  --pill-bg: rgba(255, 253, 248, 0.62);
+  /* Motion 2.1：时长和曲线统一收口，快而不飘，慢而不拖 */
+  --ease-enter: cubic-bezier(0.22, 1, 0.36, 1);
+  --ease-exit: cubic-bezier(0.4, 0, 1, 1);
+  --ease-standard: cubic-bezier(0.4, 0, 0.2, 1);
+  --ease-spring: cubic-bezier(0.34, 1.4, 0.64, 1);
+  --ease-sheet: cubic-bezier(0.33, 1, 0.68, 1);
+  --dur-tap: 0.16s;
+  --dur-enter: 0.38s;
+  --dur-exit: 0.22s;
+  --dur-sheet: 0.34s;
+  --dur-screen: 0.3s;
+  /* 边到边安全区：Capacitor 8 在 Android 注入 --safe-area-inset-*，
+     网页与 iOS 走 env()，两边都取不到时按 0 处理 */
+  --safe-top: var(--safe-area-inset-top, env(safe-area-inset-top, 0px));
+  --safe-bottom: var(--safe-area-inset-bottom, env(safe-area-inset-bottom, 0px));
+}
+
+html[data-theme='dark'] {
+  color-scheme: dark;
+  --paper: #0f1512;
+  --paper-deep: #1a231c;
+  --surface: #161f19;
+  --white: #1d2821;
+  --ink: #f1eadc;
+  --ink-soft: #c9c4b5;
+  --muted: #96988d;
+  --line: #2a342c;
+  --line-strong: #3b473d;
+  --line-soft: #232d26;
+  --accent: #e26b4d;
+  --accent-deep: #f28a6c;
+  --gold: #e0b45d;
+  --pine: #a3bcab;
+  --cream: #f4ebd9;
+  --danger: #f08b70;
+  --tint-base: #101913;
+  --hover-bg: rgba(255, 255, 255, 0.04);
+  --focus-color: #e0b45d;
+  --placeholder: #7f8378;
+  --eyebrow: #d7ac5d;
+  --btn-bg: #efe5d2;
+  --btn-fg: #14201a;
+  --nav-active-bg: #efe5d2;
+  --nav-active-fg: #14201a;
+  --sheet-header-bg: rgba(15, 21, 18, 0.96);
+  --nav-bg: rgba(12, 18, 15, 0.93);
+  --toast-bg: #efe5d2;
+  --toast-fg: #131c16;
+  --bar-empty: #2b352d;
+  --bar-data: #849b8c;
+  --bar-hover: #a8bcae;
+  --pill-bg: rgba(255, 255, 255, 0.045);
+  --shadow-card: 0 18px 40px -30px rgba(0, 0, 0, 0.85);
+}
+
+*,
+*::before,
+*::after {
+  box-sizing: border-box;
+}
+
+html {
+  -webkit-text-size-adjust: 100%;
+}
+
+body {
+  margin: 0;
+  min-height: 100vh;
+  min-height: 100dvh;
+  overflow: hidden;
+  font-family: var(--font-sans);
+  color: var(--ink);
+  background:
+    radial-gradient(1100px 720px at 8% -12%, #ece2d0 0%, transparent 55%),
+    radial-gradient(900px 620px at 100% 108%, #e1e6db 0%, transparent 52%),
+    #ece6da;
+  -webkit-font-smoothing: antialiased;
+  text-rendering: optimizeLegibility;
+}
+
+button,
+input,
+textarea {
+  font-family: inherit;
+}
+
+button {
+  -webkit-tap-highlight-color: transparent;
+}
+
+button:focus-visible,
+input:focus-visible,
+a:focus-visible {
+  outline: 2px solid var(--focus-color);
+  outline-offset: 2px;
+}
+
+::selection {
+  background: rgba(212, 90, 60, 0.22);
+}
+
+.app-shell {
+  position: relative;
+  display: flex;
+  flex-direction: column;
+  width: 100%;
+  max-width: 560px;
+  min-width: 0;
+  height: 100vh;
+  height: 100dvh;
+  margin: 0 auto;
+  background: var(--paper);
+  overflow: hidden;
+}
+
+.app-main {
+  flex: 1;
+  min-width: 0;
+  min-height: 0;
+  overflow-y: auto;
+  overflow-x: hidden;
+  scrollbar-width: thin;
+  scrollbar-color: var(--line-strong) transparent;
+  scrollbar-gutter: stable;
+  overscroll-behavior-y: contain;
+}
+
+.app-main::-webkit-scrollbar,
+.sheet-body::-webkit-scrollbar {
+  width: 4px;
+}
+
+.app-main::-webkit-scrollbar-thumb,
+.sheet-body::-webkit-scrollbar-thumb {
+  background: var(--line-strong);
+  border-radius: 4px;
+}
+
+.screen-slot {
+  animation: screen-in var(--dur-screen) cubic-bezier(0.22, 1, 0.36, 1) both;
+}
+
+/* 原生 View Transitions 可用时，页面切换由浏览器统一编排，避免两套动画叠加 */
+html[data-motion='view-transition'] .screen-slot {
+  animation: none;
+}
+
+html[data-vt-kind='nav'] .app-main {
+  view-transition-name: app-screen;
+}
+
+.screen {
+  padding: calc(22px + var(--safe-top)) 20px 108px;
+}
+
+/* ---------- Common ---------- */
+
+.primary-button,
+.ghost-button,
+.danger-button,
+.install-button {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  gap: 7px;
+  border: 0;
+  border-radius: 14px;
+  padding: 13px 20px;
+  font-size: 13px;
+  font-weight: 650;
+  cursor: pointer;
+  transition: transform 0.16s ease, background 0.16s ease, box-shadow 0.16s ease;
+}
+
+.primary-button {
+  background: var(--btn-bg);
+  color: var(--btn-fg);
+  box-shadow: 0 12px 24px -16px rgba(23, 36, 30, 0.8);
+}
+
+.primary-button:hover {
+  transform: translateY(-1px);
+}
+
+.primary-button:active {
+  transform: translateY(0);
+}
+
+.primary-button:disabled {
+  opacity: 0.4;
+  cursor: not-allowed;
+  transform: none;
+  box-shadow: none;
+}
+
+.ghost-button {
+  background: transparent;
+  border: 1px solid var(--line);
+  color: var(--ink-soft);
+}
+
+.ghost-button:hover {
+  background: rgba(23, 36, 30, 0.04);
+}
+
+.danger-button {
+  background: var(--danger);
+  color: #fff8f4;
+}
+
+.section {
+  margin-top: 27px;
+}
+
+.section-head {
+  display: flex;
+  align-items: flex-end;
+  justify-content: space-between;
+  gap: 12px;
+  margin-bottom: 12px;
+}
+
+.section-head h2 {
+  margin: 0;
+  font-size: 16px;
+  font-weight: 720;
+  letter-spacing: -0.01em;
+}
+
+.section-head p {
+  margin: 4px 0 0;
+  font-size: 10.5px;
+  color: var(--muted);
+}
+
+.text-button {
+  display: inline-flex;
+  align-items: center;
+  gap: 3px;
+  flex: none;
+  padding: 6px 0;
+  border: 0;
+  background: none;
+  color: var(--ink-soft);
+  font-size: 10.5px;
+  font-weight: 650;
+  cursor: pointer;
+  transition: color 0.16s ease;
+}
+
+.text-button:hover {
+  color: var(--accent);
+}
+
+.shift-dot {
+  width: 8px;
+  height: 8px;
+  border-radius: 50%;
+  background: var(--shift-color, var(--accent));
+  flex: none;
+}
+

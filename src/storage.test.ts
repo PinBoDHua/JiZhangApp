@@ -1,6 +1,7 @@
 import { afterEach, beforeEach, describe, expect, it } from 'vitest';
 import {
   buildBackup,
+  clearRecovery,
   isISODate,
   isTimeHM,
   loadPreferences,
@@ -8,6 +9,7 @@ import {
   loadActiveShift,
   migrateStorage,
   parseBackup,
+  readRecoveryMap,
   saveRecords,
   saveActiveShift,
 } from './storage';
@@ -410,6 +412,28 @@ describe('storage v1 -> v2 migration', () => {
     saveActiveShift(null);
     expect(store.get('shift-ledger.active-shift.v1')).toBeUndefined();
     expect(loadActiveShift()).toBeNull();
+  });
+
+  it('keeps a copy of unreadable collections instead of dropping them', () => {
+    store.set('shift-ledger.records.v2', '[{"id":"broken"');
+
+    // 读取失败按空列表处理，但原文被另存为恢复副本，之后编辑覆盖也不会真的丢
+    expect(loadRecords()).toEqual([]);
+    const recovery = readRecoveryMap();
+    expect(recovery['shift-ledger.records.v2'].raw).toBe('[{"id":"broken"');
+
+    // 同一份坏数据再读一次不会重复改写副本
+    const saved = store.get('shift-ledger.recovery.v2');
+    expect(loadRecords()).toEqual([]);
+    expect(store.get('shift-ledger.recovery.v2')).toBe(saved);
+
+    clearRecovery();
+    expect(readRecoveryMap()).toEqual({});
+  });
+
+  it('ignores a recovery file that is itself unreadable', () => {
+    store.set('shift-ledger.recovery.v2', 'not-json');
+    expect(readRecoveryMap()).toEqual({});
   });
 });
 

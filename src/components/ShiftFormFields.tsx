@@ -9,6 +9,7 @@ import {
   computePay,
   DEFAULT_OVERTIME_MULTIPLIER,
   DEFAULT_STANDARD_MINUTES,
+  MIN_OVERTIME_MULTIPLIER,
   normalizeOvertimeRule,
 } from '../pay';
 import {
@@ -378,7 +379,7 @@ export function OvertimeField({
               <span className="field-label">加班倍数</span>
               <MultiplierOptions
                 value={Math.max(effective.multiplier, multiplier)}
-                min={Math.max(1.25, multiplier)}
+                min={Math.max(MIN_OVERTIME_MULTIPLIER, multiplier)}
                 label="选择加班倍数"
                 onChange={(next) => onChange({ ...effective, multiplier: next })}
               />

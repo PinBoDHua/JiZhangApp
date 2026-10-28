@@ -1,0 +1,269 @@
+/* 工时账本样式 · 日期倍率与批量补记
+   原 index.css 第 6707–6972 行，按原顺序拆出；
+   全局样式依赖先后顺序覆盖，改动前请确认没有跨文件的同名选择器。 */
+/* ---------- 2.2 日期倍率与批量补记 ---------- */
+
+.day-rule-setting {
+  padding: 2px 12px 10px;
+}
+
+.day-rule-setting .reminder-head {
+  padding: 8px 0 2px;
+}
+
+.day-rule-row {
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+  padding-top: 10px;
+}
+
+.day-rule-label {
+  color: var(--ink-soft);
+  font-size: 10px;
+  font-weight: 650;
+  letter-spacing: 0.02em;
+}
+
+.segmented-control.day-rule-options {
+  grid-template-columns: repeat(5, 1fr);
+  background: var(--surface);
+}
+
+.holiday-block {
+  margin-top: 12px;
+  padding-top: 11px;
+  border-top: 1px dashed var(--line);
+}
+
+.holiday-head {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  color: var(--ink-soft);
+  font-size: 10px;
+  font-weight: 650;
+}
+
+.holiday-head small {
+  color: var(--muted);
+  font-weight: 500;
+  font-variant-numeric: tabular-nums;
+}
+
+.holiday-list {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 6px;
+  margin-top: 8px;
+}
+
+.holiday-chip {
+  display: inline-flex;
+  align-items: center;
+  gap: 5px;
+  padding: 4px 5px 4px 9px;
+  border: 1px solid var(--line);
+  border-radius: 999px;
+  background: var(--tint-base);
+  color: var(--ink);
+  font-size: 10px;
+}
+
+.holiday-chip small {
+  color: var(--muted);
+  font-variant-numeric: tabular-nums;
+}
+
+.holiday-chip button {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: 16px;
+  height: 16px;
+  border: 0;
+  border-radius: 50%;
+  background: transparent;
+  color: var(--muted);
+  cursor: pointer;
+  transition: background var(--dur-tap) ease, color var(--dur-tap) ease;
+}
+
+.holiday-chip button:hover {
+  background: var(--hover-bg);
+  color: var(--accent-deep);
+}
+
+.holiday-form {
+  display: grid;
+  grid-template-columns: minmax(0, 1.1fr) minmax(0, 1fr) auto;
+  gap: 6px;
+  margin-top: 9px;
+}
+
+.holiday-form input[type='date'],
+.holiday-form .text-input {
+  min-width: 0;
+  height: 34px;
+  padding: 0 8px;
+  border: 1px solid var(--line-strong);
+  border-radius: 10px;
+  background: var(--tint-base);
+  color: var(--ink);
+  font-family: inherit;
+  font-size: 10px;
+}
+
+.holiday-form .ghost-button {
+  height: 34px;
+  padding: 0 12px;
+  border-radius: 10px;
+  font-size: 10px;
+}
+
+.holiday-form .ghost-button:disabled {
+  opacity: 0.45;
+  cursor: not-allowed;
+}
+
+.day-rule-setting .field-hint {
+  margin: 8px 0 0;
+}
+
+/* 批量补记 */
+.batch-range {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+}
+
+.batch-date-input {
+  flex: 1 1 0;
+  min-width: 0;
+  height: 46px;
+  padding: 0 10px;
+  border: 1px solid var(--line-strong);
+  border-radius: 12px;
+  background: var(--tint-base);
+  color: var(--ink);
+  font-family: inherit;
+  font-size: 13px;
+  font-variant-numeric: tabular-nums;
+}
+
+.batch-auto-multiplier {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 10px;
+  padding: 10px 12px;
+  border: 1px solid var(--line);
+  border-radius: 12px;
+  background: var(--surface);
+}
+
+.batch-auto-multiplier > span {
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+  min-width: 0;
+}
+
+.batch-auto-multiplier strong {
+  color: var(--ink);
+  font-size: 11px;
+  font-weight: 650;
+}
+
+.batch-auto-multiplier small {
+  color: var(--muted);
+  font-size: 9px;
+}
+
+.batch-range-sep {
+  flex: none;
+  color: var(--muted);
+  font-size: 10px;
+}
+
+.batch-summary {
+  display: grid;
+  grid-template-columns: repeat(3, 1fr);
+  gap: 8px;
+  padding: 11px 13px;
+  border: 1px solid var(--line);
+  border-radius: var(--radius-md);
+  background: var(--surface);
+}
+
+.batch-summary div {
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+}
+
+.batch-summary span {
+  color: var(--muted);
+  font-size: 9px;
+}
+
+.batch-summary strong {
+  color: var(--ink);
+  font-family: var(--font-serif);
+  font-size: 17px;
+  font-weight: 600;
+  font-variant-numeric: tabular-nums;
+}
+
+.batch-summary strong small {
+  margin-right: 1px;
+  font-size: 10px;
+}
+
+.batch-weekdays {
+  display: grid;
+  grid-template-columns: repeat(7, 1fr);
+  gap: 4px;
+}
+
+.batch-weekdays button {
+  padding: 8px 0;
+  border: 1px solid var(--line);
+  border-radius: 10px;
+  background: var(--tint-base);
+  color: var(--muted);
+  font-size: 10px;
+  cursor: pointer;
+  transition: background var(--dur-tap) ease, color var(--dur-tap) ease,
+    border-color var(--dur-tap) ease;
+}
+
+.batch-weekdays button.is-active {
+  border-color: var(--btn-bg);
+  background: var(--btn-bg);
+  color: var(--btn-fg);
+  font-weight: 650;
+}
+
+.batch-note {
+  display: flex;
+  align-items: flex-start;
+  gap: 7px;
+  margin: 2px 0 0;
+  padding: 9px 11px;
+  border-radius: 11px;
+  background: var(--paper);
+  color: var(--muted);
+  font-size: 9px;
+  line-height: 1.55;
+}
+
+.batch-note.is-warning {
+  background: color-mix(in srgb, var(--gold) 14%, transparent);
+  color: var(--ink-soft);
+}
+
+.batch-note svg {
+  flex: none;
+  margin-top: 1px;
+}

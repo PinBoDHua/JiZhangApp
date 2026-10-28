@@ -1,4 +1,5 @@
 import { DEFAULT_DAY_PAY_RULE, type DayPayRule, type HolidayDate } from './types';
+import { round2 } from './num';
 import { parseISODate } from './utils';
 
 /**
@@ -33,7 +34,7 @@ export function isHolidayDateISO(value: unknown): value is string {
 function normalizeMultiplier(value: unknown, fallback: number): number {
   if (typeof value !== 'number' || !Number.isFinite(value)) return fallback;
   if (value <= 0 || value > 10) return fallback;
-  return Math.round(value * 100) / 100;
+  return round2(value);
 }
 
 function normalizeHolidays(value: unknown): HolidayDate[] {
@@ -125,7 +126,7 @@ export function resolveDayRule(
 
 /** 1.25 → "1.25"，2 → "2" */
 export function formatMultiplier(value: number): string {
-  return Number.isInteger(value) ? String(value) : String(Math.round(value * 100) / 100);
+  return Number.isInteger(value) ? String(value) : String(round2(value));
 }
 
 /** 表单里的一行说明："周末 · 2×"；没有命中规则时返回空字符串 */

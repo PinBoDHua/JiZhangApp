@@ -5,6 +5,7 @@ import type {
   WorkRecord,
 } from './types';
 import { resolveDayRule } from './dayRule';
+import { round2 } from './num';
 import { addDaysISO, parseISODate, shiftPay, sortPlans } from './utils';
 
 /**
@@ -138,6 +139,6 @@ export function summarizeBatch(
   return {
     days: records.length,
     minutes,
-    earnings: Math.round(earnings * 100) / 100,
+    earnings: round2(earnings),
   };
 }

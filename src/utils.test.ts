@@ -3,11 +3,18 @@ import {
   activePauseMs,
   activeWorkedMinutes,
   activeWorkedMs,
+  addDaysISO,
   buildPayslipText,
   canStartPlan,
+  formatDateCN,
+  formatDateFullCN,
+  formatDayHeading,
   formatDuration,
   formatElapsed,
   formatMoney,
+  formatSignedCount,
+  formatSignedDuration,
+  formatSignedMoney,
   formatDateRangeCN,
   freePlanDates,
   getWeekRange,
@@ -96,6 +103,24 @@ describe('time calculations', () => {
   });
 });
 
+describe('date formatting resilience', () => {
+  it('keeps the raw string instead of printing NaN dates', () => {
+    expect(formatDateCN('2026-13-45')).toBe('2026-13-45');
+    expect(formatDateFullCN('not-a-date')).toBe('not-a-date');
+    expect(formatDayHeading('')).toBe('');
+  });
+
+  it('does not shift an unparseable date by a day', () => {
+    expect(addDaysISO('broken', 1)).toBe('broken');
+  });
+
+  it('falls back to the current week when the anchor is invalid', () => {
+    const week = getWeekRange('2026-13-45');
+    expect(week.start <= week.end).toBe(true);
+    expect(week.start).toMatch(/^\d{4}-\d{2}-\d{2}$/);
+  });
+});
+
 describe('duration formatting', () => {
   it('never renders a dangling 60 minutes', () => {
     expect(formatDuration(59.6)).toBe('1 小时');
@@ -113,6 +138,19 @@ describe('money formatting', () => {
     expect(formatMoney(0)).toBe('0');
     expect(formatMoney(-0.001)).toBe('0');
     expect(formatMoney(Number.NaN)).toBe('0');
+  });
+
+  it('formats signed differences with a single sign and unit', () => {
+    expect(formatSignedMoney(120)).toBe('+¥120');
+    expect(formatSignedMoney(-120.456)).toBe('-¥120.46');
+    expect(formatSignedMoney(0)).toBe('¥0');
+    expect(formatSignedMoney(Number.NaN)).toBe('¥0');
+    expect(formatSignedCount(3)).toBe('+3');
+    expect(formatSignedCount(-3)).toBe('-3');
+    expect(formatSignedCount(0)).toBe('0');
+    expect(formatSignedDuration(90)).toBe('+1 小时 30 分');
+    expect(formatSignedDuration(-90)).toBe('-1 小时 30 分');
+    expect(formatSignedDuration(0)).toBe('0 小时');
   });
 });
 

@@ -1,0 +1,105 @@
+/* 工时账本样式 · 底部导航与悬浮按钮
+   原 index.css 第 1453–1554 行，按原顺序拆出；
+   全局样式依赖先后顺序覆盖，改动前请确认没有跨文件的同名选择器。 */
+/* ---------- Bottom navigation & FAB ---------- */
+
+.bottom-nav {
+  position: relative;
+  z-index: 15;
+  display: flex;
+  flex: none;
+  align-items: center;
+  justify-content: space-around;
+  gap: 2px;
+  padding: 7px 14px calc(7px + var(--safe-bottom));
+  border-top: 1px solid var(--line);
+  background: var(--nav-bg);
+  backdrop-filter: blur(18px);
+}
+
+.nav-item {
+  position: relative;
+  z-index: 1;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 3px;
+  min-width: 52px;
+  padding: 4px 8px;
+  border: 0;
+  border-radius: 14px;
+  background: none;
+  color: var(--muted);
+  cursor: pointer;
+  transition: color 0.16s ease;
+}
+
+.nav-icon {
+  position: relative;
+  display: grid;
+  place-items: center;
+  width: 38px;
+  height: 26px;
+  border-radius: 9px;
+  transition: background 0.18s ease, color 0.18s ease;
+}
+
+.nav-active-pill {
+  position: absolute;
+  top: 0;
+  left: 0;
+  z-index: 0;
+  border-radius: 9px;
+  background: var(--nav-active-bg);
+  opacity: 0;
+  pointer-events: none;
+  transition:
+    transform 0.34s var(--ease-spring),
+    width 0.34s var(--ease-spring),
+    height 0.34s var(--ease-spring),
+    opacity 0.18s ease;
+}
+
+.nav-active-pill.is-ready {
+  opacity: 1;
+}
+
+.nav-timer-dot {
+  position: absolute;
+  top: 1px;
+  right: 5px;
+  width: 5px;
+  height: 5px;
+  border-radius: 50%;
+  background: var(--accent);
+  box-shadow: 0 0 0 2px var(--nav-bg);
+  animation: timer-dot-pulse 2.4s ease-out infinite;
+}
+
+.nav-timer-dot.is-paused {
+  background: var(--gold);
+  animation: none;
+}
+
+.nav-label {
+  font-size: 9.5px;
+  font-weight: 600;
+  letter-spacing: 0.04em;
+}
+
+.nav-item:hover {
+  color: var(--ink-soft);
+}
+
+.nav-item.is-active {
+  color: var(--ink);
+}
+
+.nav-item.is-active .nav-icon {
+  color: var(--nav-active-fg);
+}
+
+.nav-item.is-active .nav-icon svg {
+  animation: nav-icon-pop 0.36s var(--ease-spring);
+}
+

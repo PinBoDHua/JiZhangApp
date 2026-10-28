@@ -1,0 +1,97 @@
+/* 工时账本样式 · 自适应断点
+   原 index.css 第 4788–4881 行，按原顺序拆出；
+   全局样式依赖先后顺序覆盖，改动前请确认没有跨文件的同名选择器。 */
+/* ---------- Responsive ---------- */
+
+@media (max-width: 370px) {
+  .screen {
+    padding-left: 16px;
+    padding-right: 16px;
+  }
+
+  .quick-scroll {
+    margin-left: -16px;
+    margin-right: -16px;
+    padding-left: 16px;
+    padding-right: 16px;
+  }
+
+  .brand h1 {
+    font-size: 18.5px;
+  }
+
+  .home-date {
+    padding: 6px 9px;
+    font-size: 9px;
+  }
+
+  .custom-panel {
+    flex-direction: column;
+    align-items: stretch;
+  }
+
+  .sheet-body {
+    padding-left: 16px;
+    padding-right: 16px;
+  }
+
+  .sheet-footer {
+    padding-left: 16px;
+    padding-right: 16px;
+  }
+
+  .date-quick button {
+    padding: 8px;
+    font-size: 9.5px;
+  }
+}
+
+@media (min-width: 720px) {
+  body {
+    padding: 24px;
+  }
+
+  .app-shell {
+    height: calc(100vh - 48px);
+    height: calc(100dvh - 48px);
+    border-radius: 34px;
+    box-shadow:
+      0 42px 90px -40px rgba(23, 36, 30, 0.55),
+      0 0 0 1px rgba(23, 36, 30, 0.05);
+  }
+
+  .screen {
+    padding-top: 28px;
+    padding-bottom: 112px;
+  }
+
+  .sheet-backdrop {
+    align-items: center;
+    padding: 24px;
+  }
+
+  .sheet {
+    border-radius: 28px;
+    max-height: min(900px, calc(100dvh - 48px));
+  }
+
+  .sheet-header {
+    padding-top: 13px;
+  }
+
+  .bottom-nav {
+    border-radius: 0 0 34px 34px;
+  }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  *,
+  *::before,
+  *::after {
+    scroll-behavior: auto !important;
+    animation-duration: 0.01ms !important;
+    animation-iteration-count: 1 !important;
+    transition-duration: 0.01ms !important;
+  }
+}
+

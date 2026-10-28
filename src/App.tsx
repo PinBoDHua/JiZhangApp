@@ -1,24 +1,15 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
-import { Capacitor } from '@capacitor/core';
-import { App as CapacitorApp } from '@capacitor/app';
-import { saveTextFile } from './app/fileExport';
+import { SheetRouter } from './app/sheetRouter';
+import { TAB_LABELS } from './app/tabs';
 import { BottomNav } from './components/BottomNav';
-import { BatchRecordSheet } from './components/BatchRecordSheet';
 import { Calendar, type CalendarMode } from './components/Calendar';
 import { ConfirmDialog } from './components/ConfirmDialog';
-import { EndTimingSheet } from './components/EndTimingSheet';
-import { GoalSheet } from './components/GoalSheet';
 import { Home } from './components/Home';
-import { MissedPlansSheet } from './components/MissedPlansSheet';
-import { PlanSheet } from './components/PlanSheet';
-import { RecordSheet } from './components/RecordSheet';
-import { RotationSheet } from './components/RotationSheet';
+import { ScreenBoundary } from './components/ScreenBoundary';
 import { Settings } from './components/Settings';
-import { SettlementSheet, type SettlementInput } from './components/SettlementSheet';
-import { StartTimingSheet } from './components/StartTimingSheet';
 import { Stats } from './components/Stats';
-import { TemplateSheet, type TemplateInput } from './components/TemplateSheet';
 import { Toast } from './components/Toast';
+import { useAppBackButton, useAppShortcuts } from './hooks/useAppNavigation';
 import { useAppData } from './hooks/useAppData';
 import { useBackupActions } from './hooks/useBackupActions';
 import { useInstallPrompt } from './hooks/useInstallPrompt';
@@ -26,28 +17,31 @@ import { useIsomorphicLayoutEffect } from './hooks/useIsomorphicLayoutEffect';
 import { usePlanActions } from './hooks/usePlanActions';
 import { useRecordActions } from './hooks/useRecordActions';
 import { useReminderSync } from './hooks/useReminderSync';
+import { useSettingsActions } from './hooks/useSettingsActions';
 import { useSheetController, SHEET_EXIT_MS } from './hooks/useSheetController';
 import { useStorageSync } from './hooks/useStorageSync';
 import { useTheme } from './hooks/useTheme';
 import { useToast } from './hooks/useToast';
-import { hapticImpact, hapticSuccess, hapticTap } from './feedback';
-import { navDirection, runScreenTransition, runThemeTransition } from './motion';
+import { hapticTap } from './feedback';
+import { navDirection, runScreenTransition } from './motion';
 import { SheetMotionContext } from './sheetMotion';
-import { normalizeReminderLead } from './reminders';
-import { STORAGE_ERROR_EVENT, STORAGE_ERROR_MESSAGE } from './storage';
-import { parseAppAction, type AppShortcut } from './shortcuts';
+import {
+  STORAGE_ERROR_EVENT,
+  STORAGE_ERROR_MESSAGE,
+  STORAGE_RECOVERY_EVENT,
+  clearRecovery,
+  readRecoveryMap,
+} from './storage';
+import type { AppShortcut } from './shortcuts';
 import type {
-  DayPayRule,
-  MonthlySettlement,
   PlannedShift,
   SettlementOpenContext,
   ShiftTemplate,
   StatsPeriod,
   Tab,
-  ThemePreference,
   WorkRecord,
 } from './types';
-import { findLatestRecord, todayISO, uid } from './utils';
+import { downloadFile, findLatestRecord, todayISO } from './utils';
 
 /**
  * 应用外壳：只负责「当前在哪个标签、打开哪个浮层」与把动作层接到组件上。
@@ -83,7 +77,6 @@ export default function App() {
   const [statsPeriod, setStatsPeriod] = useState<StatsPeriod>('month');
   const [calendarMode, setCalendarMode] = useState<CalendarMode>('records');
   const mainRef = useRef<HTMLElement>(null);
-  const handledLaunchUrl = useRef<string | null>(null);
 
   const goToTab = useCallback(
     (next: Tab) => {
@@ -184,45 +177,8 @@ export default function App() {
     [defaultTemplate, openSheet, goToTab],
   );
 
-  useEffect(() => {
-    const initial = parseAppAction(`${window.location.search}${window.location.hash}`);
-    let timer: number | null = null;
-    if (initial) {
-      // 先清掉 query，避免依赖变化重跑时重复打开
-      window.history.replaceState(null, '', window.location.pathname);
-      // 延后一帧执行，等首次渲染和默认模板就绪后再打开浮层
-      timer = window.setTimeout(() => openAppShortcut(initial), 0);
-    }
-    const clearInitial = () => {
-      if (timer !== null) window.clearTimeout(timer);
-    };
-    if (!Capacitor.isNativePlatform()) return clearInitial;
-    let disposed = false;
-    let remove: (() => void) | undefined;
-    // 冷启动：快捷方式通过 launch intent 进入时，App 插件不一定补发 appUrlOpen
-    void CapacitorApp.getLaunchUrl()
-      .then((result) => {
-        if (!result?.url || handledLaunchUrl.current === result.url) return;
-        handledLaunchUrl.current = result.url;
-        const action = parseAppAction(result.url);
-        if (action) openAppShortcut(action);
-      })
-      .catch(() => {
-        // 没有 launch URL 时插件可能直接 reject，忽略即可
-      });
-    void CapacitorApp.addListener('appUrlOpen', (event) => {
-      const action = parseAppAction(event.url);
-      if (action) openAppShortcut(action);
-    }).then((handle) => {
-      remove = () => void handle.remove();
-      if (disposed) remove();
-    });
-    return () => {
-      clearInitial();
-      disposed = true;
-      remove?.();
-    };
-  }, [openAppShortcut]);
+  /** 快捷方式：PWA 的 ?action= 与 Android 的 gongshi:// 共用同一个入口 */
+  useAppShortcuts(openAppShortcut);
 
   const openPlanFromNotification = useCallback(
     (date: string) => {
@@ -243,33 +199,15 @@ export default function App() {
     onOpenPlanDate: openPlanFromNotification,
   });
 
-  useEffect(() => {
-    if (!Capacitor.isNativePlatform()) return;
-    let disposed = false;
-    let remove: (() => void) | undefined;
-    void CapacitorApp.addListener('backButton', () => {
-      if (confirm) {
-        closeConfirm();
-        return;
-      }
-      if (sheet) {
-        closeSheet();
-        return;
-      }
-      if (tab !== 'home') {
-        goToTab('home');
-        return;
-      }
-      void CapacitorApp.exitApp();
-    }).then((handle) => {
-      remove = () => void handle.remove();
-      if (disposed) remove();
-    });
-    return () => {
-      disposed = true;
-      remove?.();
-    };
-  }, [confirm, sheet, tab, goToTab, closeSheet, closeConfirm]);
+  /** Android 返回键：确认框 → 浮层 → 回到首页 → 退出 */
+  useAppBackButton({
+    confirmOpen: Boolean(confirm),
+    sheetOpen: Boolean(sheet),
+    tab,
+    onCloseConfirm: closeConfirm,
+    onCloseSheet: closeSheet,
+    onGoHome: goHome,
+  });
 
   useEffect(() => {
     document.title = activeShift
@@ -288,6 +226,30 @@ export default function App() {
     window.addEventListener(STORAGE_ERROR_EVENT, onStorageError);
     return () => window.removeEventListener(STORAGE_ERROR_EVENT, onStorageError);
   }, [notify]);
+
+  /**
+   * 本地数据损坏时的兜底出口：读取阶段已把原文另存到恢复副本，
+   * 这里给用户一个「导出副本」的入口，避免只能看到空列表却无从挽救。
+   */
+  useEffect(() => {
+    const exportRecovery = () => {
+      const map = readRecoveryMap();
+      if (Object.keys(map).length === 0) return;
+      downloadFile(
+        `工时账本-损坏数据-${todayISO()}.json`,
+        JSON.stringify(map, null, 2),
+        'application/json',
+      );
+      clearRecovery();
+      notify('损坏数据的副本已导出');
+    };
+    const onRecovery = () =>
+      notifyWithAction('本地数据读取失败，原始内容已保留', '导出副本', exportRecovery);
+    // 首次读取发生在 effect 之前，补一次检查；跨会话没导出时会继续提醒
+    if (Object.keys(readRecoveryMap()).length > 0) onRecovery();
+    window.addEventListener(STORAGE_RECOVERY_EVENT, onRecovery);
+    return () => window.removeEventListener(STORAGE_RECOVERY_EVENT, onRecovery);
+  }, [notify, notifyWithAction]);
 
   /* ------------------------------- 打开浮层 ------------------------------- */
 
@@ -339,151 +301,32 @@ export default function App() {
 
   /* ------------------------------- 设置与导出 ------------------------------ */
 
-  const handleSaveSettlement = useCallback(
-    (input: SettlementInput) => {
-      if (!sheet || sheet.kind !== 'settlement') return;
-      const saved: MonthlySettlement = {
-        ...input,
-        monthKey: sheet.context.monthKey,
-        updatedAt: Date.now(),
-      };
-      setSettlements((prev) =>
-        [...prev.filter((item) => item.monthKey !== saved.monthKey), saved].sort((a, b) =>
-          a.monthKey.localeCompare(b.monthKey),
-        ),
-      );
-      hapticSuccess();
-      closeSheet();
-      notify('工资结算已保存');
-    },
-    [sheet, setSettlements, closeSheet, notify],
-  );
-
-  const handleSharePayslip = useCallback(
-    async (text: string) => {
-      if (!sheet || sheet.kind !== 'settlement') return;
-      await saveTextFile(notify, {
-        filename: `工资条-${sheet.context.monthLabel}.txt`,
-        content: text,
-        mime: 'text/plain;charset=utf-8',
-        dialogTitle: '保存或分享工资条',
-        nativeSuccess: '工资条已生成',
-        webSuccess: '工资条已导出',
-        failure: '工资条导出失败，请重试',
-      });
-    },
-    [sheet, notify],
-  );
-
-  const handleShareAnnualReport = useCallback(
-    async (text: string, year: number) => {
-      await saveTextFile(notify, {
-        filename: `工时账本-${year}年度复盘.txt`,
-        content: text,
-        mime: 'text/plain;charset=utf-8',
-        dialogTitle: '保存或分享年度复盘',
-        nativeSuccess: '年度报告已生成',
-        webSuccess: '年度报告已导出',
-        failure: '年度报告导出失败，请重试',
-      });
-    },
-    [notify],
-  );
-
-  const handleSaveGoal = useCallback(
-    (goal: number) => {
-      setPreferences((prev) => ({ ...prev, monthlyGoal: goal }));
-      hapticSuccess();
-      closeSheet();
-      notify(goal > 0 ? '月收入目标已更新' : '已清除月收入目标');
-    },
-    [setPreferences, closeSheet, notify],
-  );
-
-  const handleDayRuleChange = useCallback(
-    (dayRule: DayPayRule) => setPreferences((prev) => ({ ...prev, dayRule })),
-    [setPreferences],
-  );
-
-  const handleThemeChange = useCallback(
-    (theme: ThemePreference, origin?: { x: number; y: number }) => {
-      runThemeTransition(() => setPreferences((prev) => ({ ...prev, theme })), origin);
-    },
-    [setPreferences],
-  );
-
-  const handleToggleReminder = useCallback(async () => {
-    if (!reminderStatus.supported) {
-      notify('系统提醒仅支持 Android App');
-      return;
-    }
-    if (preferences.reminderEnabled) {
-      setPreferences((prev) => ({ ...prev, reminderEnabled: false }));
-      notify('排班提醒已关闭');
-      return;
-    }
-    const status = await requestPermission();
-    if (status.permission === 'granted') {
-      setPreferences((prev) => ({ ...prev, reminderEnabled: true }));
-      notify('排班提醒已开启');
-    } else {
-      notify('请在系统设置中允许通知');
-    }
-  }, [reminderStatus, preferences.reminderEnabled, setPreferences, requestPermission, notify]);
-
-  const handleReminderLeadChange = useCallback(
-    (minutes: number) => {
-      setPreferences((prev) => ({
-        ...prev,
-        reminderLeadMinutes: normalizeReminderLead(minutes),
-      }));
-    },
-    [setPreferences],
-  );
-
-  const handleRequestExactAlarm = useCallback(async () => {
-    const status = await requestExactAlarm();
-    notify(
-      status.exactAlarm === 'granted' ? '精确提醒已开启' : '未开启精确提醒，通知可能略有延迟',
-    );
-  }, [requestExactAlarm, notify]);
-
-  const handleSaveTemplate = useCallback(
-    (input: TemplateInput) => {
-      if (!sheet || sheet.kind !== 'template') return;
-      if (sheet.template) {
-        const id = sheet.template.id;
-        setTemplates((prev) =>
-          prev.map((template) => (template.id === id ? { ...template, ...input } : template)),
-        );
-        notify('班次已更新');
-      } else {
-        setTemplates((prev) => [...prev, { ...input, id: uid() }]);
-        notify('班次已添加');
-      }
-      hapticSuccess();
-      closeSheet();
-    },
-    [sheet, setTemplates, closeSheet, notify],
-  );
-
-  const requestDeleteTemplate = useCallback(() => {
-    if (!sheet || sheet.kind !== 'template' || !sheet.template) return;
-    const target = sheet.template;
-    askConfirm({
-      title: `删除「${target.name}」？`,
-      message: '已有记录不会受影响，之后的记账中不再出现这个班次。',
-      confirmLabel: '删除',
-      danger: true,
-      onConfirm: () => {
-        setTemplates((prev) => prev.filter((template) => template.id !== target.id));
-        closeConfirm();
-        hapticImpact();
-        closeSheet();
-        notify('班次已删除');
-      },
-    });
-  }, [sheet, setTemplates, askConfirm, closeConfirm, closeSheet, notify]);
+  const {
+    saveSettlement: handleSaveSettlement,
+    sharePayslip: handleSharePayslip,
+    shareAnnualReport: handleShareAnnualReport,
+    saveGoal: handleSaveGoal,
+    changeDayRule: handleDayRuleChange,
+    changeTheme: handleThemeChange,
+    toggleReminder: handleToggleReminder,
+    changeReminderLead: handleReminderLeadChange,
+    requestExactAlarm: handleRequestExactAlarm,
+    saveTemplate: handleSaveTemplate,
+    requestDeleteTemplate,
+  } = useSettingsActions({
+    sheet,
+    reminderStatus,
+    preferences,
+    setPreferences,
+    setTemplates,
+    setSettlements,
+    closeSheet,
+    notify,
+    askConfirm,
+    closeConfirm,
+    requestPermission,
+    requestExactAlarm,
+  });
 
   const overlayOpen = Boolean(sheet || confirm);
 
@@ -491,97 +334,100 @@ export default function App() {
     <div className="app-shell">
       <main className="app-main" ref={mainRef} inert={overlayOpen}>
         <div className="screen-slot" key={tab}>
-          {tab === 'home' ? (
-            <Home
-              records={records}
-              templates={templates}
-              plans={plans}
-              monthlyGoal={preferences.monthlyGoal}
-              activeShift={activeShift}
-              onAddRecord={openNewRecord}
-              onEditRecord={openRecordEditor}
-              onGoStats={() => openStats('month')}
-              onGoWeekStats={() => openStats('week')}
-              onStartTiming={() => openSheet({ kind: 'startTiming' })}
-              onStartPlan={planActions.startPlan}
-              onRecordPlan={(plan) => openSheet({ kind: 'record', plan, date: plan.date })}
-              onEditPlan={openPlanEditor}
-              onOpenMissed={openMissedPlans}
-              onClockOut={recordActions.requestEndTiming}
-              onPauseTiming={recordActions.pauseTiming}
-              onResumeTiming={recordActions.resumeTiming}
-              onAbandonTiming={recordActions.abandonTiming}
-            />
-          ) : null}
-          {tab === 'calendar' ? (
-            <Calendar
-              key={calendarFocus?.token ?? 'calendar'}
-              records={records}
-              plans={plans}
-              templates={templates}
-              mode={calendarMode}
-              timingActive={Boolean(activeShift)}
-              activePlanId={activeShift?.sourcePlanId ?? null}
-              reminderEnabled={preferences.reminderEnabled}
-              focusRequest={calendarFocus}
-              onModeChange={setCalendarMode}
-              onEditRecord={openRecordEditor}
-              onAddRecord={(date) => openNewRecord(defaultTemplate, date)}
-              onAddPlan={openNewPlan}
-              onOpenBatch={openBatch}
-              onOpenRotation={openRotation}
-              onEditPlan={openPlanEditor}
-              onStartPlan={planActions.startPlan}
-              onRecordPlan={(plan) => openSheet({ kind: 'record', plan, date: plan.date })}
-            />
-          ) : null}
-          {tab === 'stats' ? (
-            <Stats
-              records={records}
-              plans={plans}
-              planHistory={planHistory}
-              activePlanId={activeShift?.sourcePlanId ?? null}
-              monthlyGoal={preferences.monthlyGoal}
-              settlements={settlements}
-              onOpenSettlement={openSettlement}
-              onOpenMissed={openMissedPlans}
-              onExportAnnualReport={handleShareAnnualReport}
-              initialPeriod={statsPeriod}
-              onPeriodChange={setStatsPeriod}
-            />
-          ) : null}
-          {tab === 'settings' ? (
-            <Settings
-              templates={templates}
-              recordCount={records.length}
-              monthlyGoal={preferences.monthlyGoal}
-              theme={preferences.theme}
-              resolvedTheme={resolvedTheme}
-              lastBackupAt={preferences.lastBackupAt}
-              dayRule={preferences.dayRule}
-              onAddTemplate={() => openTemplateEditor()}
-              onEditTemplate={openTemplateEditor}
-              onEditGoal={() => openSheet({ kind: 'goal' })}
-              onDayRuleChange={handleDayRuleChange}
-              onThemeChange={handleThemeChange}
-              reminder={{
-                ...reminderStatus,
-                enabled: preferences.reminderEnabled,
-                leadMinutes: preferences.reminderLeadMinutes,
-              }}
-              onToggleReminder={handleToggleReminder}
-              onReminderLeadChange={handleReminderLeadChange}
-              onRequestExactAlarm={handleRequestExactAlarm}
-              onExportJson={backupActions.exportJson}
-              onExportCsv={backupActions.exportCsv}
-              onImportFile={backupActions.importFile}
-              onImportCsv={backupActions.importCsv}
-              onClearRecords={recordActions.requestClearRecords}
-              installAvailable={installAvailable}
-              onInstall={install}
-              isStandalone={isStandalone}
-            />
-          ) : null}
+          {/* 每页一层错误边界：单页渲染失败时仍可用底栏切走，不必整页刷新 */}
+          <ScreenBoundary screen={TAB_LABELS[tab]}>
+            {tab === 'home' ? (
+              <Home
+                records={records}
+                templates={templates}
+                plans={plans}
+                monthlyGoal={preferences.monthlyGoal}
+                activeShift={activeShift}
+                onAddRecord={openNewRecord}
+                onEditRecord={openRecordEditor}
+                onGoStats={() => openStats('month')}
+                onGoWeekStats={() => openStats('week')}
+                onStartTiming={() => openSheet({ kind: 'startTiming' })}
+                onStartPlan={planActions.startPlan}
+                onRecordPlan={(plan) => openSheet({ kind: 'record', plan, date: plan.date })}
+                onEditPlan={openPlanEditor}
+                onOpenMissed={openMissedPlans}
+                onClockOut={recordActions.requestEndTiming}
+                onPauseTiming={recordActions.pauseTiming}
+                onResumeTiming={recordActions.resumeTiming}
+                onAbandonTiming={recordActions.abandonTiming}
+              />
+            ) : null}
+            {tab === 'calendar' ? (
+              <Calendar
+                key={calendarFocus?.token ?? 'calendar'}
+                records={records}
+                plans={plans}
+                templates={templates}
+                mode={calendarMode}
+                timingActive={Boolean(activeShift)}
+                activePlanId={activeShift?.sourcePlanId ?? null}
+                reminderEnabled={preferences.reminderEnabled}
+                focusRequest={calendarFocus}
+                onModeChange={setCalendarMode}
+                onEditRecord={openRecordEditor}
+                onAddRecord={(date) => openNewRecord(defaultTemplate, date)}
+                onAddPlan={openNewPlan}
+                onOpenBatch={openBatch}
+                onOpenRotation={openRotation}
+                onEditPlan={openPlanEditor}
+                onStartPlan={planActions.startPlan}
+                onRecordPlan={(plan) => openSheet({ kind: 'record', plan, date: plan.date })}
+              />
+            ) : null}
+            {tab === 'stats' ? (
+              <Stats
+                records={records}
+                plans={plans}
+                planHistory={planHistory}
+                activePlanId={activeShift?.sourcePlanId ?? null}
+                monthlyGoal={preferences.monthlyGoal}
+                settlements={settlements}
+                onOpenSettlement={openSettlement}
+                onOpenMissed={openMissedPlans}
+                onExportAnnualReport={handleShareAnnualReport}
+                initialPeriod={statsPeriod}
+                onPeriodChange={setStatsPeriod}
+              />
+            ) : null}
+            {tab === 'settings' ? (
+              <Settings
+                templates={templates}
+                recordCount={records.length}
+                monthlyGoal={preferences.monthlyGoal}
+                theme={preferences.theme}
+                resolvedTheme={resolvedTheme}
+                lastBackupAt={preferences.lastBackupAt}
+                dayRule={preferences.dayRule}
+                onAddTemplate={() => openTemplateEditor()}
+                onEditTemplate={openTemplateEditor}
+                onEditGoal={() => openSheet({ kind: 'goal' })}
+                onDayRuleChange={handleDayRuleChange}
+                onThemeChange={handleThemeChange}
+                reminder={{
+                  ...reminderStatus,
+                  enabled: preferences.reminderEnabled,
+                  leadMinutes: preferences.reminderLeadMinutes,
+                }}
+                onToggleReminder={handleToggleReminder}
+                onReminderLeadChange={handleReminderLeadChange}
+                onRequestExactAlarm={handleRequestExactAlarm}
+                onExportJson={backupActions.exportJson}
+                onExportCsv={backupActions.exportCsv}
+                onImportFile={backupActions.importFile}
+                onImportCsv={backupActions.importCsv}
+                onClearRecords={recordActions.requestClearRecords}
+                installAvailable={installAvailable}
+                onInstall={install}
+                isStandalone={isStandalone}
+              />
+            ) : null}
+          </ScreenBoundary>
         </div>
       </main>
 
@@ -594,7 +440,45 @@ export default function App() {
       />
 
       <SheetMotionContext.Provider value={closing}>
-        {renderSheet()}
+        {sheet ? (
+          <SheetRouter
+            sheet={sheet}
+            guard={Boolean(confirm)}
+            data={{
+              templates,
+              records,
+              plans,
+              activePlanId: activeShift?.sourcePlanId ?? null,
+              latestRecord,
+              defaultTemplate,
+              dayRule: preferences.dayRule,
+              monthlyGoal: preferences.monthlyGoal,
+              reminder: {
+                available: reminderStatus.supported,
+                enabled: preferences.reminderEnabled,
+                leadMinutes: preferences.reminderLeadMinutes,
+              },
+            }}
+            actions={{
+              close: closeSheet,
+              saveRecord: recordActions.saveRecord,
+              deleteRecord: recordActions.deleteRecord,
+              savePlan: planActions.savePlan,
+              requestDeletePlan: planActions.requestDeletePlan,
+              generateBatch: recordActions.generateBatch,
+              generateRotation: planActions.generateRotation,
+              recordPlan: (plan) => openSheet({ kind: 'record', plan, date: plan.date }),
+              skipPlan: planActions.requestSkipPlan,
+              saveTemplate: handleSaveTemplate,
+              requestDeleteTemplate,
+              saveGoal: handleSaveGoal,
+              startTiming: recordActions.startTiming,
+              saveTimingEnd: recordActions.saveTimingEnd,
+              saveSettlement: handleSaveSettlement,
+              sharePayslip: handleSharePayslip,
+            }}
+          />
+        ) : null}
       </SheetMotionContext.Provider>
 
       {confirm ? (
@@ -629,148 +513,4 @@ export default function App() {
       ) : null}
     </div>
   );
-
-  function renderSheet() {
-    if (!sheet) return null;
-    const guard = Boolean(confirm);
-    switch (sheet.kind) {
-      case 'record':
-        return (
-          <RecordSheet
-            key={
-              sheet.record?.id ??
-              sheet.plan?.id ??
-              `new-${sheet.template?.id ?? 'custom'}-${sheet.date ?? todayISO()}`
-            }
-            templates={templates}
-            record={sheet.record}
-            plan={sheet.plan}
-            template={sheet.template}
-            initialDate={sheet.date}
-            recentRecord={sheet.record || sheet.plan ? undefined : latestRecord}
-            dayRule={preferences.dayRule}
-            onClose={closeSheet}
-            onSave={recordActions.saveRecord}
-            onDelete={sheet.record ? recordActions.deleteRecord : undefined}
-            escapeDisabled={guard}
-          />
-        );
-      case 'plan':
-        return (
-          <PlanSheet
-            key={sheet.plan?.id ?? `new-plan-${sheet.date ?? todayISO()}`}
-            templates={templates}
-            plan={sheet.plan}
-            initialDate={sheet.date}
-            defaultTemplate={defaultTemplate}
-            dayRule={preferences.dayRule}
-            reminderAvailable={reminderStatus.supported}
-            globalReminderEnabled={preferences.reminderEnabled}
-            globalReminderLeadMinutes={preferences.reminderLeadMinutes}
-            onClose={closeSheet}
-            onSave={planActions.savePlan}
-            onDelete={sheet.plan ? planActions.requestDeletePlan : undefined}
-            escapeDisabled={guard}
-          />
-        );
-      case 'batch':
-        return (
-          <BatchRecordSheet
-            key={`batch-${sheet.date ?? todayISO()}`}
-            templates={templates}
-            records={records}
-            plans={plans}
-            defaultTemplate={defaultTemplate}
-            initialDate={sheet.date}
-            dayRule={preferences.dayRule}
-            onClose={closeSheet}
-            onGenerate={recordActions.generateBatch}
-            escapeDisabled={guard}
-          />
-        );
-      case 'rotation':
-        return (
-          <RotationSheet
-            key={`rotation-${sheet.date ?? todayISO()}`}
-            templates={templates}
-            plans={plans}
-            initialDate={sheet.date}
-            onClose={closeSheet}
-            onGenerate={planActions.generateRotation}
-            escapeDisabled={guard}
-          />
-        );
-      case 'missed':
-        return (
-          <MissedPlansSheet
-            plans={plans}
-            records={records}
-            activePlanId={activeShift?.sourcePlanId ?? null}
-            onClose={closeSheet}
-            onRecord={(plan) => openSheet({ kind: 'record', plan, date: plan.date })}
-            onSkip={planActions.requestSkipPlan}
-            escapeDisabled={guard}
-          />
-        );
-      case 'template':
-        return (
-          <TemplateSheet
-            key={sheet.template?.id ?? 'new-template'}
-            template={sheet.template}
-            onClose={closeSheet}
-            onSave={handleSaveTemplate}
-            onDelete={sheet.template ? requestDeleteTemplate : undefined}
-            escapeDisabled={guard}
-          />
-        );
-      case 'goal':
-        return (
-          <GoalSheet
-            goal={preferences.monthlyGoal}
-            onClose={closeSheet}
-            onSave={handleSaveGoal}
-            escapeDisabled={guard}
-          />
-        );
-      case 'startTiming':
-        return (
-          <StartTimingSheet
-            templates={templates}
-            defaultTemplate={defaultTemplate}
-            onClose={closeSheet}
-            onStart={recordActions.startTiming}
-            escapeDisabled={guard}
-          />
-        );
-      case 'endTiming':
-        return (
-          <EndTimingSheet
-            shift={sheet.shift}
-            endTime={sheet.endTime}
-            endAt={sheet.endAt}
-            onClose={closeSheet}
-            onSave={recordActions.saveTimingEnd}
-            escapeDisabled={guard}
-          />
-        );
-      case 'settlement':
-        return (
-          <SettlementSheet
-            monthLabel={sheet.context.monthLabel}
-            baseEarnings={sheet.context.baseEarnings}
-            baseMinutes={sheet.context.baseMinutes}
-            workedDays={sheet.context.workedDays}
-            overtimeMinutes={sheet.context.overtimeMinutes}
-            overtimeEarnings={sheet.context.overtimeEarnings}
-            settlement={sheet.settlement}
-            onClose={closeSheet}
-            onSave={handleSaveSettlement}
-            onShare={handleSharePayslip}
-            escapeDisabled={guard}
-          />
-        );
-      default:
-        return null;
-    }
-  }
 }

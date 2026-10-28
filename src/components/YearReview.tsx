@@ -1,12 +1,12 @@
-import { useState } from 'react';
+import { useMemo, useState } from 'react';
 import {
   buildAnnualDays,
   buildAnnualReportText,
   buildAnnualSummary,
   buildYearHeatmap,
 } from '../annual';
-import { useAnimatedNumber } from '../hooks/useAnimatedNumber';
 import type { WorkRecord } from '../types';
+import { AnimatedValue } from './AnimatedValue';
 import {
   formatDateCN,
   formatDuration,
@@ -29,17 +29,24 @@ function heatLevel(earnings: number, maxEarnings: number): number {
 
 /** 年度复盘：摘要、12×31 热力图、年度之最与报告导出 */
 export function YearReview({ year, records, onExport }: YearReviewProps) {
-  const summary = buildAnnualSummary(records, year);
-  const heatmap = buildYearHeatmap(records, year);
-  const days = buildAnnualDays(records, year);
-  const dayMap = new Map(days.map((day) => [day.date, day]));
-  const maxEarnings = days.reduce((max, day) => Math.max(max, day.earnings), 0);
+  /**
+   * 年度数据一次算完：12 个月 × 31 天的热力图与按日明细都是全量遍历，
+   * 之前点选日期、金额滚动都会把它们重算一遍，年份视图因此最吃性能。
+   */
+  const annual = useMemo(() => {
+    const days = buildAnnualDays(records, year);
+    return {
+      summary: buildAnnualSummary(records, year),
+      heatmap: buildYearHeatmap(records, year),
+      days,
+      dayMap: new Map(days.map((day) => [day.date, day])),
+      maxEarnings: days.reduce((max, day) => Math.max(max, day.earnings), 0),
+    };
+  }, [records, year]);
+  const { summary, heatmap, dayMap, maxEarnings } = annual;
   const [selectedDate, setSelectedDate] = useState<string | null>(null);
   const selected =
     (selectedDate ? dayMap.get(selectedDate) : undefined) ?? summary.bestDay;
-  const shownEarnings = useAnimatedNumber(summary.earnings, {
-    resetKey: String(year),
-  });
 
   return (
     <section className="panel year-review-panel" aria-label={`${year}年度复盘`}>
@@ -62,7 +69,7 @@ export function YearReview({ year, records, onExport }: YearReviewProps) {
           <span>全年收入</span>
           <strong>
             <small>¥</small>
-            {formatMoney(shownEarnings)}
+            <AnimatedValue value={summary.earnings} resetKey={String(year)} />
           </strong>
         </div>
         <div className="year-highlight">

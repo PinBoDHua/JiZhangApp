@@ -150,14 +150,6 @@ export function MoonIcon(props: IconProps) {
   );
 }
 
-export function SparkIcon(props: IconProps) {
-  return (
-    <svg {...baseProps(props)}>
-      <path d="M12 3c.7 4.8 3.5 7.6 8.3 8.3-4.8.7-7.6 3.5-8.3 8.3-.7-4.8-3.5-7.6-8.3-8.3C8.5 10.6 11.3 7.8 12 3Z" />
-    </svg>
-  );
-}
-
 export function WalletIcon(props: IconProps) {
   return (
     <svg {...baseProps(props)}>
@@ -210,15 +202,6 @@ export function CopyIcon(props: IconProps) {
     <svg {...baseProps(props)}>
       <rect x="8.5" y="8.5" width="11" height="11" rx="2.5" />
       <path d="M15.5 8.5V6A2.5 2.5 0 0 0 13 3.5H6A2.5 2.5 0 0 0 3.5 6v7A2.5 2.5 0 0 0 6 15.5h2.5" />
-    </svg>
-  );
-}
-
-export function TrendUpIcon(props: IconProps) {
-  return (
-    <svg {...baseProps(props)}>
-      <path d="m5 15 5.5-5.5 3.5 3.5L19 8" />
-      <path d="M14.5 8H19v4.5" />
     </svg>
   );
 }

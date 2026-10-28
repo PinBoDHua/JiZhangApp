@@ -1,0 +1,338 @@
+/* 工时账本样式 · 轮班表与排班提醒
+   原 index.css 第 4882–5216 行，按原顺序拆出；
+   全局样式依赖先后顺序覆盖，改动前请确认没有跨文件的同名选择器。 */
+/* ---------- Shift rotation & reminders (v1.7) ---------- */
+
+.rotation-entry {
+  display: inline-flex;
+  flex: none;
+  align-items: center;
+  gap: 4px;
+  padding: 6px 10px;
+  border: 1px solid var(--line);
+  border-radius: 999px;
+  background: var(--surface);
+  color: var(--ink-soft);
+  font-family: inherit;
+  font-size: 10px;
+  font-weight: 650;
+  cursor: pointer;
+  transition: background 0.16s ease, color 0.16s ease;
+}
+
+.rotation-entry:hover {
+  background: var(--hover-bg);
+  color: var(--ink);
+}
+
+.plan-reminder-icon {
+  flex: none;
+  color: var(--accent);
+  opacity: 0.85;
+}
+
+.rotation-presets {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: 6px;
+}
+
+.rotation-preset {
+  display: flex;
+  flex-direction: column;
+  align-items: flex-start;
+  gap: 3px;
+  padding: 9px 10px;
+  border: 1px solid var(--line);
+  border-radius: 12px;
+  background: var(--paper);
+  color: var(--ink);
+  font-family: inherit;
+  text-align: left;
+  cursor: pointer;
+  transition: background 0.16s ease, border-color 0.16s ease;
+}
+
+.rotation-preset:hover {
+  background: var(--hover-bg);
+}
+
+.rotation-preset > span {
+  font-size: 10.5px;
+  font-weight: 680;
+  line-height: 1.35;
+}
+
+.rotation-preset > small {
+  color: var(--muted);
+  font-size: 8.5px;
+  line-height: 1.35;
+}
+
+.rotation-preset.is-active {
+  border-color: var(--accent);
+  background: rgba(216, 163, 59, 0.1);
+  box-shadow: inset 0 0 0 1px color-mix(in srgb, var(--accent) 25%, transparent);
+}
+
+.rotation-cycle-head {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 8px;
+  margin-top: 3px;
+}
+
+.rotation-cycle {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 5px;
+  padding: 9px;
+  border: 1px solid var(--line);
+  border-radius: 13px;
+  background: var(--paper);
+}
+
+.rotation-day {
+  display: inline-flex;
+  flex-direction: column;
+  align-items: flex-start;
+  gap: 1px;
+  min-width: 45px;
+  padding: 5px 7px;
+  border: 1px solid color-mix(in srgb, var(--shift-color) 30%, var(--line));
+  border-radius: 9px;
+  background: var(--surface);
+  color: var(--ink);
+  font-family: inherit;
+  cursor: pointer;
+  transition: background 0.16s ease, border-color 0.16s ease;
+}
+
+.rotation-day:hover {
+  background: var(--hover-bg);
+}
+
+.rotation-day-index {
+  color: var(--muted);
+  font-size: 7px;
+  font-weight: 650;
+  letter-spacing: 0.04em;
+}
+
+.rotation-day-name {
+  display: inline-flex;
+  align-items: center;
+  gap: 3px;
+  font-size: 9.5px;
+  font-weight: 650;
+  white-space: nowrap;
+}
+
+.rotation-day-name::before {
+  content: "";
+  width: 5px;
+  height: 5px;
+  border-radius: 50%;
+  background: var(--shift-color);
+}
+
+.rotation-day.is-rest {
+  border-style: dashed;
+  border-color: var(--line-strong);
+  background: var(--paper-deep);
+  color: var(--muted);
+}
+
+.rotation-day.is-rest .rotation-day-name::before {
+  background: var(--line-strong);
+}
+
+.rotation-add-row {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 5px;
+}
+
+.rotation-add-chip {
+  display: inline-flex;
+  align-items: center;
+  gap: 5px;
+  padding: 6px 9px;
+  border: 1px dashed var(--line-strong);
+  border-radius: 999px;
+  background: transparent;
+  color: var(--ink-soft);
+  font-family: inherit;
+  font-size: 9.5px;
+  font-weight: 600;
+  cursor: pointer;
+  transition: background 0.16s ease;
+}
+
+.rotation-add-chip:hover:not(:disabled) {
+  background: var(--hover-bg);
+}
+
+.rotation-add-chip:disabled {
+  opacity: 0.4;
+  cursor: not-allowed;
+}
+
+.rotation-add-chip.is-rest {
+  color: var(--muted);
+}
+
+.rotation-summary {
+  padding: 13px 14px;
+  border: 1px solid var(--line);
+  border-radius: 16px;
+  background:
+    radial-gradient(110% 140% at 100% 0%, rgba(216, 163, 59, 0.12), transparent 62%),
+    var(--surface);
+}
+
+.rotation-summary-top {
+  display: flex;
+  align-items: baseline;
+  justify-content: space-between;
+  gap: 10px;
+}
+
+.rotation-summary-top > span {
+  color: var(--ink-soft);
+  font-size: 10px;
+}
+
+.rotation-summary-top > span strong {
+  color: var(--ink);
+  font-size: 13px;
+}
+
+.rotation-summary-top > strong {
+  font-family: var(--font-serif);
+  font-size: 21px;
+  font-weight: 600;
+  letter-spacing: -0.02em;
+  font-variant-numeric: tabular-nums;
+}
+
+.rotation-summary-top > strong small {
+  margin-right: 1px;
+  color: var(--accent);
+  font-family: var(--font-sans);
+  font-size: 9.5px;
+  font-weight: 500;
+}
+
+.rotation-summary-meta {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 5px;
+  margin-top: 5px;
+  color: var(--muted);
+  font-size: 8.5px;
+  font-variant-numeric: tabular-nums;
+}
+
+.rotation-footer-hint {
+  margin: 0;
+  color: var(--muted);
+  font-size: 9px;
+  text-align: center;
+}
+
+.reminder-setting {
+  padding: 12px 14px 14px;
+}
+
+.reminder-head {
+  display: flex;
+  align-items: center;
+  gap: 11px;
+}
+
+.reminder-head .settings-row-main {
+  flex: 1;
+  min-width: 0;
+}
+
+.reminder-head .action-icon {
+  color: var(--accent-deep);
+}
+
+.switch {
+  position: relative;
+  flex: none;
+  width: 42px;
+  height: 25px;
+  padding: 2px;
+  border: 1px solid var(--line-strong);
+  border-radius: 999px;
+  background: var(--paper-deep);
+  cursor: pointer;
+  transition: background 0.18s ease, border-color 0.18s ease;
+}
+
+.switch span {
+  display: block;
+  width: 19px;
+  height: 19px;
+  border-radius: 50%;
+  background: var(--surface);
+  box-shadow: 0 1px 3px rgba(23, 36, 30, 0.22);
+  transition: transform 0.18s ease;
+}
+
+.switch.is-on {
+  border-color: var(--btn-bg);
+  background: var(--btn-bg);
+}
+
+.switch.is-on span {
+  background: var(--btn-fg);
+  transform: translateX(17px);
+}
+
+.switch:disabled {
+  opacity: 0.45;
+  cursor: not-allowed;
+}
+
+.reminder-setting .segmented-control {
+  margin-top: 11px;
+}
+
+.segmented-control.reminder-lead {
+  grid-template-columns: repeat(4, 1fr);
+}
+
+.reminder-status {
+  margin: 9px 1px 0;
+  color: var(--muted);
+  font-size: 9px;
+  line-height: 1.5;
+}
+
+.reminder-status.is-warning {
+  color: var(--danger);
+}
+
+.reminder-exact {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 8px;
+  margin-top: 4px;
+  color: var(--accent-deep);
+  font-size: 9px;
+  line-height: 1.5;
+}
+
+.reminder-exact .text-button {
+  padding: 4px 0;
+  color: var(--accent-deep);
+  font-size: 9.5px;
+}
+

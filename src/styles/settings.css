@@ -1,0 +1,259 @@
+/* 工时账本样式 · 设置页：班次、目标、外观与数据
+   原 index.css 第 1197–1452 行，按原顺序拆出；
+   全局样式依赖先后顺序覆盖，改动前请确认没有跨文件的同名选择器。 */
+/* ---------- Settings ---------- */
+
+.install-card {
+  display: grid;
+  grid-template-columns: auto 1fr auto;
+  align-items: center;
+  gap: 11px;
+  margin-bottom: 22px;
+  padding: 15px;
+  overflow: hidden;
+  border-radius: 22px;
+  background:
+    radial-gradient(120% 160% at 100% 0%, rgba(216, 163, 59, 0.2), transparent 55%),
+    linear-gradient(140deg, #20372b, #14241c);
+  color: var(--cream);
+  box-shadow: 0 20px 36px -28px rgba(20, 36, 28, 0.8);
+}
+
+.install-mark {
+  filter: drop-shadow(0 4px 10px rgba(0, 0, 0, 0.25));
+}
+
+.install-copy h2 {
+  margin: 0;
+  font-size: 13.5px;
+  font-weight: 700;
+}
+
+.install-copy p {
+  margin: 3px 0 0;
+  color: rgba(244, 235, 217, 0.6);
+  font-size: 9.5px;
+  line-height: 1.5;
+}
+
+.install-button {
+  flex: none;
+  padding: 8px 14px;
+  border-radius: 999px;
+  background: var(--cream);
+  color: #274236;
+  font-size: 11px;
+}
+
+.install-button:hover {
+  background: #fff8e9;
+}
+
+.install-hint {
+  grid-column: 1 / -1;
+  margin: 0;
+  padding-top: 9px;
+  border-top: 1px solid rgba(244, 235, 217, 0.12);
+  color: rgba(244, 235, 217, 0.5);
+  font-size: 9px;
+}
+
+.settings-section {
+  margin-top: 24px;
+}
+
+.settings-section:first-of-type {
+  margin-top: 0;
+}
+
+.settings-heading {
+  margin-bottom: 9px;
+  padding: 0 3px;
+}
+
+.settings-heading h2 {
+  margin: 0;
+  font-size: 13.5px;
+  font-weight: 720;
+}
+
+.settings-heading p {
+  margin: 3px 0 0;
+  color: var(--muted);
+  font-size: 9.5px;
+}
+
+.settings-group {
+  overflow: hidden;
+  border: 1px solid var(--line);
+  border-radius: 20px;
+  background: var(--surface);
+  box-shadow: 0 14px 34px -32px rgba(23, 36, 30, 0.5);
+}
+
+.settings-row {
+  position: relative;
+  display: flex;
+  align-items: center;
+  gap: 11px;
+  width: 100%;
+  padding: 12px 14px;
+  border: 0;
+  background: none;
+  color: var(--ink);
+  text-align: left;
+  cursor: pointer;
+  transition: background 0.16s ease;
+}
+
+.settings-row:hover {
+  background: var(--hover-bg);
+}
+
+.settings-row + .settings-row::before {
+  content: "";
+  position: absolute;
+  top: 0;
+  left: 63px;
+  right: 14px;
+  border-top: 1px solid var(--line-soft);
+}
+
+.template-icon,
+.action-icon,
+.add-template-icon {
+  display: grid;
+  flex: none;
+  place-items: center;
+  width: 37px;
+  height: 37px;
+  border-radius: 12px;
+}
+
+.template-icon {
+  background: color-mix(in srgb, var(--shift-color) 14%, var(--tint-base));
+  color: var(--shift-color);
+}
+
+.action-icon {
+  background: var(--paper-deep);
+  color: var(--ink-soft);
+}
+
+.add-template-icon {
+  border: 1px dashed var(--line-strong);
+  color: var(--muted);
+}
+
+.settings-row-main {
+  display: flex;
+  flex: 1;
+  flex-direction: column;
+  min-width: 0;
+}
+
+.settings-row-title {
+  font-size: 12.5px;
+  font-weight: 650;
+}
+
+.settings-row-sub {
+  margin-top: 3px;
+  overflow: hidden;
+  color: var(--muted);
+  font-size: 9.5px;
+  white-space: nowrap;
+  text-overflow: ellipsis;
+  font-variant-numeric: tabular-nums;
+}
+
+.template-rate {
+  flex: none;
+  color: var(--ink);
+  font-size: 12.5px;
+  font-weight: 700;
+  font-variant-numeric: tabular-nums;
+}
+
+.template-rate small {
+  color: var(--muted);
+  font-size: 8.5px;
+  font-weight: 450;
+}
+
+.row-chevron {
+  flex: none;
+  color: var(--line-strong);
+}
+
+.add-template-row .settings-row-title {
+  color: var(--ink-soft);
+  font-size: 12px;
+  font-weight: 600;
+}
+
+.clear-button {
+  display: flex;
+  align-items: center;
+  gap: 7px;
+  width: 100%;
+  margin-top: 11px;
+  padding: 11px 14px;
+  border: 1px solid rgba(163, 63, 40, 0.18);
+  border-radius: 14px;
+  background: transparent;
+  color: var(--danger);
+  font-size: 11px;
+  font-weight: 600;
+  cursor: pointer;
+  transition: background 0.16s ease, opacity 0.16s ease;
+}
+
+.clear-button:hover:not(:disabled) {
+  background: rgba(163, 63, 40, 0.05);
+}
+
+.clear-button:disabled {
+  opacity: 0.34;
+  cursor: not-allowed;
+}
+
+.clear-button span {
+  margin-left: auto;
+  color: var(--muted);
+  font-size: 9.5px;
+  font-weight: 450;
+}
+
+.about-card {
+  margin-top: 22px;
+  padding: 14px 15px;
+  border: 1px dashed var(--line-strong);
+  border-radius: 17px;
+  background: var(--paper-deep);
+}
+
+.about-title {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  color: var(--ink-soft);
+  font-size: 10.5px;
+  font-weight: 650;
+}
+
+.about-card p {
+  margin: 6px 0 0;
+  color: var(--muted);
+  font-size: 9.5px;
+  line-height: 1.7;
+}
+
+.about-version {
+  display: block;
+  margin-top: 9px;
+  color: var(--muted);
+  font-size: 8.5px;
+  letter-spacing: 0.07em;
+}
+

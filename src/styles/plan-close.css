@@ -1,0 +1,370 @@
+/* 工时账本样式 · 排班结算与漏记处理
+   原 index.css 第 5217–5583 行，按原顺序拆出；
+   全局样式依赖先后顺序覆盖，改动前请确认没有跨文件的同名选择器。 */
+/* ---------- Plan close-out (v1.8) ---------- */
+
+.missed-card {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  width: 100%;
+  margin-bottom: 12px;
+  padding: 12px 14px;
+  border: 1px solid rgba(212, 90, 60, 0.22);
+  border-radius: 18px;
+  background:
+    radial-gradient(120% 150% at 100% 0%, rgba(212, 90, 60, 0.12), transparent 65%),
+    var(--surface);
+  color: var(--ink);
+  font-family: inherit;
+  text-align: left;
+  cursor: pointer;
+  box-shadow: var(--shadow-card);
+}
+
+.missed-card-icon {
+  display: grid;
+  flex: none;
+  place-items: center;
+  width: 36px;
+  height: 36px;
+  border-radius: 12px;
+  background: rgba(212, 90, 60, 0.12);
+  color: var(--accent-deep);
+}
+
+.missed-card-main {
+  display: flex;
+  flex: 1;
+  flex-direction: column;
+  gap: 2px;
+  min-width: 0;
+}
+
+.missed-card-main strong {
+  font-size: 12.5px;
+  font-weight: 680;
+}
+
+.missed-card-main span {
+  overflow: hidden;
+  color: var(--muted);
+  font-size: 9.5px;
+  white-space: nowrap;
+  text-overflow: ellipsis;
+}
+
+.missed-card-chevron {
+  flex: none;
+  color: var(--accent);
+}
+
+.plan-badge.is-missed {
+  background: rgba(212, 90, 60, 0.12);
+  color: var(--accent-deep);
+}
+
+.plan-badge.is-timing {
+  background: rgba(60, 125, 108, 0.12);
+  color: var(--pine);
+}
+
+.missed-summary {
+  margin: 0 0 10px;
+  color: var(--muted);
+  font-size: 9.5px;
+}
+
+.missed-plan-list {
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
+}
+
+.missed-plan-row {
+  position: relative;
+  padding: 13px 13px 12px 16px;
+  border: 1px solid var(--line);
+  border-radius: 16px;
+  background: var(--surface);
+}
+
+.missed-plan-row::before {
+  content: "";
+  position: absolute;
+  top: 14px;
+  bottom: 14px;
+  left: 0;
+  width: 3px;
+  border-radius: 0 3px 3px 0;
+  background: var(--shift-color);
+}
+
+.missed-plan-head {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 8px;
+}
+
+.missed-plan-date {
+  color: var(--muted);
+  font-size: 9px;
+  font-variant-numeric: tabular-nums;
+}
+
+.missed-plan-name {
+  display: inline-flex;
+  align-items: center;
+  gap: 5px;
+  font-size: 13px;
+  font-weight: 680;
+}
+
+.missed-plan-meta {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 5px;
+  margin: 5px 0 0;
+  color: var(--ink-soft);
+  font-size: 9.5px;
+  font-variant-numeric: tabular-nums;
+}
+
+.missed-plan-note {
+  margin: 4px 0 0;
+  color: var(--muted);
+  font-size: 9px;
+}
+
+.missed-plan-record-hint {
+  margin: 6px 0 0;
+  padding: 5px 8px;
+  border-radius: 8px;
+  background: rgba(216, 163, 59, 0.1);
+  color: var(--eyebrow);
+  font-size: 8.5px;
+  line-height: 1.4;
+}
+
+.missed-plan-actions {
+  display: flex;
+  gap: 6px;
+  margin-top: 10px;
+}
+
+.missed-plan-record,
+.missed-plan-skip {
+  flex: 1;
+  padding: 8px;
+  border-radius: 9px;
+  font-family: inherit;
+  font-size: 9.5px;
+  font-weight: 650;
+  cursor: pointer;
+}
+
+.missed-plan-record {
+  border: 0;
+  background: var(--btn-bg);
+  color: var(--btn-fg);
+}
+
+.missed-plan-skip {
+  border: 1px solid var(--line);
+  background: transparent;
+  color: var(--ink-soft);
+}
+
+.missed-plan-skip:hover {
+  background: var(--hover-bg);
+}
+
+.missed-empty {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 7px;
+  padding: 28px 10px 24px;
+  text-align: center;
+}
+
+.missed-empty-icon {
+  display: grid;
+  place-items: center;
+  width: 56px;
+  height: 56px;
+  border-radius: 18px;
+  background: var(--paper-deep);
+  color: var(--ink-soft);
+}
+
+.missed-empty h3 {
+  margin: 2px 0 0;
+  font-size: 13px;
+}
+
+.missed-empty p {
+  margin: 0;
+  color: var(--muted);
+  font-size: 10px;
+}
+
+.plan-reminder-head {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 10px;
+}
+
+.plan-reminder-lead {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 5px;
+}
+
+.plan-reminder-lead .choice-chip {
+  flex: 1 1 28%;
+  padding: 8px 4px;
+  font-size: 9.5px;
+}
+
+.plan-reconcile-rate {
+  flex: none;
+  text-align: right;
+}
+
+.plan-reconcile-rate span {
+  display: block;
+  color: var(--muted);
+  font-size: 8.5px;
+}
+
+.plan-reconcile-rate strong {
+  color: var(--accent-deep);
+  font-family: var(--font-serif);
+  font-size: 19px;
+  font-weight: 600;
+  letter-spacing: -0.02em;
+  font-variant-numeric: tabular-nums;
+}
+
+.plan-reconcile-bar {
+  height: 6px;
+  margin-top: 12px;
+  overflow: hidden;
+  border-radius: 999px;
+  background: var(--paper-deep);
+}
+
+.plan-reconcile-bar span {
+  display: block;
+  height: 100%;
+  border-radius: inherit;
+  background: linear-gradient(90deg, var(--pine), var(--accent));
+  transition: width 0.3s ease;
+}
+
+.plan-reconcile-counts {
+  display: grid;
+  grid-template-columns: repeat(4, 1fr);
+  gap: 6px;
+  margin-top: 10px;
+}
+
+.plan-reconcile-counts > span {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 1px;
+  padding: 7px 2px;
+  border-radius: 9px;
+  background: var(--paper);
+  color: var(--muted);
+  font-size: 8.5px;
+}
+
+.plan-reconcile-counts strong {
+  color: var(--ink);
+  font-size: 14px;
+  font-weight: 650;
+  font-variant-numeric: tabular-nums;
+}
+
+.plan-reconcile-counts > span.is-warning {
+  background: rgba(212, 90, 60, 0.09);
+  color: var(--accent-deep);
+}
+
+.plan-reconcile-counts > span.is-warning strong {
+  color: var(--accent-deep);
+}
+
+.plan-reconcile-compare {
+  display: grid;
+  grid-template-columns: repeat(3, minmax(0, 1fr));
+  gap: 8px;
+  margin-top: 11px;
+  padding-top: 11px;
+  border-top: 1px solid var(--line-soft);
+}
+
+.plan-reconcile-compare-item {
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+  min-width: 0;
+}
+
+.plan-reconcile-compare-item > span {
+  color: var(--muted);
+  font-size: 8.5px;
+}
+
+.plan-reconcile-compare-item > strong {
+  font-size: 12.5px;
+  font-weight: 680;
+  font-variant-numeric: tabular-nums;
+}
+
+.plan-reconcile-compare-item > small {
+  color: var(--muted);
+  font-size: 8px;
+  line-height: 1.4;
+  font-variant-numeric: tabular-nums;
+}
+
+.plan-reconcile-compare-item.is-up > strong {
+  color: var(--pine);
+}
+
+.plan-reconcile-compare-item.is-down > strong {
+  color: var(--accent-deep);
+}
+
+.plan-reconcile-action {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 8px;
+  width: 100%;
+  margin-top: 11px;
+  padding: 9px 11px;
+  border: 1px solid rgba(212, 90, 60, 0.18);
+  border-radius: 11px;
+  background: rgba(212, 90, 60, 0.07);
+  color: var(--accent-deep);
+  font-family: inherit;
+  font-size: 9.5px;
+  font-weight: 650;
+  cursor: pointer;
+}
+
+.plan-reconcile-empty {
+  margin: 11px 0 0;
+  color: var(--muted);
+  font-size: 9.5px;
+  text-align: center;
+}
+

@@ -9,10 +9,12 @@ import {
   buildPayslipText,
   formatDuration,
   formatMoney,
+  formatSignedMoney,
   settlementTotals,
   toISODate,
   uid,
 } from '../utils';
+import { round2 } from '../num';
 import { useClock } from '../useClock';
 import { sanitizeNumberText } from '../numberText';
 import { BottomSheet } from './BottomSheet';
@@ -83,8 +85,7 @@ export function SettlementSheet({
   const totals = settlementTotals(baseEarnings, adjustments);
   const parsedPaidAmount =
     paidAmountInput.trim() === '' ? totals.netDue : Math.max(0, Number(paidAmountInput) || 0);
-  const difference =
-    status === 'paid' ? Math.round((parsedPaidAmount - totals.netDue) * 100) / 100 : 0;
+  const difference = status === 'paid' ? round2(parsedPaidAmount - totals.netDue) : 0;
 
   const addAdjustment = (kind: SettlementAdjustmentKind) => {
     setAdjustments((prev) => [
@@ -124,7 +125,7 @@ export function SettlementSheet({
       .map((item) => ({
         ...item,
         label: item.label.trim() || KIND_LABELS[item.kind],
-        amount: Math.round(item.amount * 100) / 100,
+        amount: round2(item.amount),
       }));
     onSave({
       status,
@@ -158,8 +159,7 @@ export function SettlementSheet({
             </div>
             <span className="pay-preview-meta">
               工时 ¥{formatMoney(baseEarnings)} · 调整{' '}
-              {totals.adjustmentTotal >= 0 ? '+' : '−'}¥
-              {formatMoney(Math.abs(totals.adjustmentTotal))}
+              {formatSignedMoney(totals.adjustmentTotal)}
             </span>
           </div>
           <button type="button" className="primary-button save-button" onClick={handleSave}>

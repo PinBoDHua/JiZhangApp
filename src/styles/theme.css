@@ -1,0 +1,63 @@
+/* 工时账本样式 · 深色主题微调
+   原 index.css 第 4654–4713 行，按原顺序拆出；
+   全局样式依赖先后顺序覆盖，改动前请确认没有跨文件的同名选择器。 */
+/* ---------- Dark theme refinements ---------- */
+
+html[data-theme='dark'] body {
+  background:
+    radial-gradient(1100px 720px at 8% -12%, #17241b 0%, transparent 55%),
+    radial-gradient(900px 620px at 100% 108%, #111d17 0%, transparent 52%),
+    #090f0c;
+}
+
+html[data-theme='dark'] .hero-card {
+  border: 1px solid rgba(244, 235, 217, 0.07);
+  box-shadow: 0 28px 55px -32px rgba(0, 0, 0, 0.9);
+}
+
+html[data-theme='dark'] .install-card {
+  border: 1px solid var(--line);
+}
+
+html[data-theme='dark'] .sheet-backdrop::before {
+  background: rgba(4, 8, 6, 0.68);
+}
+
+html[data-theme='dark'] .danger-button {
+  background: #e88163;
+  color: #20110c;
+}
+
+html[data-theme='dark'] .toast {
+  border: 1px solid var(--line);
+  box-shadow: 0 18px 40px -18px rgba(0, 0, 0, 0.9);
+}
+
+html[data-theme='dark'] .date-input-wrap input::-webkit-calendar-picker-indicator,
+html[data-theme='dark'] .time-card input::-webkit-calendar-picker-indicator {
+  filter: invert(0.8);
+}
+
+html[data-theme='dark'] .empty-clock-face {
+  fill: var(--surface);
+}
+
+html[data-theme='dark'] .record-stripe,
+html[data-theme='dark'] .calendar-dots i,
+html[data-theme='dark'] .calendar-legend i,
+html[data-theme='dark'] .breakdown-bar span,
+html[data-theme='dark'] .shift-dot,
+html[data-theme='dark'] .active-timing-shift i,
+html[data-theme='dark'] .timing-option-dot {
+  filter: brightness(1.35);
+}
+
+html[data-theme='dark'] .quick-icon,
+html[data-theme='dark'] .template-icon {
+  color: color-mix(in srgb, var(--shift-color) 62%, #fff);
+}
+
+html[data-theme='dark'] .page-sub {
+  color: var(--muted);
+}
+

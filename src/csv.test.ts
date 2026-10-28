@@ -1,5 +1,6 @@
 import { describe, expect, it } from 'vitest';
 import {
+  MAX_CSV_ROWS,
   normalizeCsvDate,
   normalizeCsvTime,
   parseCsvRecords,
@@ -112,5 +113,13 @@ describe('csv import', () => {
     const result = parseCsvRecords(csv, options);
     expect(result.records).toHaveLength(1);
     expect(result.skipped).toBe(1);
+  });
+
+  it('refuses tables with more rows than the import limit', () => {
+    const row = '2026-11-04,08:00,17:00';
+    const csv = ['日期,开始,结束', ...Array.from({ length: MAX_CSV_ROWS + 1 }, () => row)].join(
+      '\n',
+    );
+    expect(() => parseCsvRecords(csv, options)).toThrow(`表格超过 ${MAX_CSV_ROWS} 行`);
   });
 });

@@ -1,0 +1,188 @@
+/* 工时账本样式 · 2.x 细节打磨：容器、滚动锁、数字与控件
+   原 index.css 第 6178–6362 行，按原顺序拆出；
+   全局样式依赖先后顺序覆盖，改动前请确认没有跨文件的同名选择器。 */
+/* ============================================================
+   Motion 2.1 — 过渡、微交互与页面级动效
+   ============================================================ */
+
+/* 页面容器保持不透明，View Transition 滑动时不会透出后面的内容 */
+.app-main {
+  background: var(--paper);
+}
+
+/* 浮层打开时锁住页面滚动，避免背后内容跟着手指动 */
+html.sheet-open .app-main,
+html.dialog-open .app-main {
+  overflow: hidden;
+}
+
+.app-shell {
+  animation: app-fade 0.24s ease-out;
+}
+
+/* ---------- 数字与进度 ---------- */
+
+.hero-goal-bar span,
+.hero-goal-bar i,
+.forecast-goal-bar span,
+.forecast-goal-bar i,
+.goal-progress-bar span,
+.plan-reconcile-bar span,
+.breakdown-bar span {
+  transform-origin: left center;
+  animation: bar-grow 0.72s var(--ease-enter) both;
+}
+
+.hero-goal.is-done .hero-goal-bar {
+  animation: goal-glow 1.3s var(--ease-standard) 0.15s 1;
+}
+
+.hero-pulse {
+  animation: pulse-soft 3.2s ease-in-out infinite;
+}
+
+/* ---------- 图表 ---------- */
+
+.bar-fill {
+  transform-origin: center bottom;
+  animation: bar-rise 0.48s var(--ease-enter) both;
+  animation-delay: calc(var(--bar-index, 0) * 9ms);
+}
+
+.chart-axis {
+  animation: fade-slide-in 0.32s var(--ease-enter) 0.06s both;
+}
+
+.chart-focus-date,
+.chart-focus-meta {
+  animation: focus-swap 0.2s var(--ease-enter) both;
+}
+
+.week-spark i {
+  transform-origin: center bottom;
+  animation: spark-rise 0.5s var(--ease-enter) both;
+  animation-delay: calc(var(--spark-index, 0) * 28ms);
+  transition: height 0.4s var(--ease-enter);
+}
+
+/* ---------- 列表与日历 ---------- */
+
+.day-group {
+  animation: list-rise 0.38s var(--ease-enter) both;
+  animation-delay: calc(var(--reveal-index, 0) * 24ms);
+}
+
+.calendar-panel {
+  transition: transform 0.32s var(--ease-enter);
+}
+
+.calendar-panel.is-swiping {
+  transition: none !important;
+  will-change: transform;
+  cursor: grabbing;
+  box-shadow: 0 24px 52px -32px rgba(23, 36, 30, 0.55);
+}
+
+.calendar-grid-next {
+  animation: calendar-next 0.3s var(--ease-enter) both;
+}
+
+.calendar-grid-prev {
+  animation: calendar-prev 0.3s var(--ease-enter) both;
+}
+
+.calendar-day {
+  transition:
+    background 0.16s ease,
+    border-color 0.16s ease,
+    color 0.16s ease,
+    box-shadow 0.18s ease;
+}
+
+.calendar-dots i {
+  animation: dot-in 0.22s var(--ease-enter) both;
+}
+
+.day-detail-inner {
+  animation: detail-in 0.24s var(--ease-enter) both;
+}
+
+.year-heatmap-scroll {
+  animation: fade-in 0.35s ease both;
+}
+
+/* ---------- 控件反馈 ---------- */
+
+.switch span {
+  transition: transform 0.24s var(--ease-spring), width 0.18s ease;
+}
+
+.switch:active span {
+  width: 22px;
+}
+
+.segmented-control button {
+  transition:
+    background 0.18s ease,
+    color 0.18s ease,
+    transform 0.16s var(--ease-standard);
+}
+
+.segmented-control button:active {
+  transform: scale(0.96);
+}
+
+.segmented-control button.is-active {
+  animation: segment-pop 0.22s var(--ease-enter);
+}
+
+.nav-icon {
+  transition: background 0.18s ease, color 0.18s ease, transform 0.16s var(--ease-standard);
+}
+
+.nav-item:active .nav-icon {
+  transform: scale(0.9);
+}
+
+.primary-button:active,
+.ghost-button:active,
+.danger-button:active,
+.install-button:active,
+.toast-action:active,
+.icon-button:active,
+.month-nav:active,
+.rotation-entry:active,
+.text-button:active,
+.plan-row-start:active,
+.plan-row-record:active,
+.next-plan-edit:active,
+.next-plan-start:active,
+.next-plan-record:active,
+.timing-pause-button:active,
+.timing-stop-button:active,
+.add-day-button:active,
+.timing-option:active {
+  transform: scale(0.96);
+}
+
+.calendar-day:active {
+  background: var(--line-soft);
+}
+
+.calendar-day.is-selected:active {
+  background: var(--accent-deep);
+}
+
+.quick-card:active,
+.settlement-card:active,
+.week-glance:active,
+.missed-card:active {
+  transform: scale(0.985);
+}
+
+.record-row:active,
+.settings-row:active,
+.plan-row-main:active {
+  background: var(--hover-bg);
+}
+

@@ -3,7 +3,6 @@ import { findMissedPlans } from '../planStats';
 import { buildMonthForecast } from '../forecast';
 import { buildWeekOverview, monthTotals, summarizeByDate } from '../overview';
 import { filterRecords, normalizeSearchQuery } from '../search';
-import { useAnimatedNumber } from '../hooks/useAnimatedNumber';
 import type { ActiveShift, PlannedShift, ShiftTemplate, WorkRecord } from '../types';
 import {
   addDaysISO,
@@ -12,6 +11,7 @@ import {
   formatHeaderDate,
   formatHours,
   formatMoney,
+  formatSignedMoney,
   groupByDate,
   isPlanPast,
   monthKey,
@@ -32,6 +32,7 @@ import {
   SearchIcon,
   SunIcon,
 } from './Icons';
+import { AnimatedValue } from './AnimatedValue';
 import { RecordRow } from './RecordRow';
 import { ActiveTimingCard } from './ActiveTimingCard';
 import { NextPlanCard } from './NextPlanCard';
@@ -122,7 +123,8 @@ export function Home({
     [records, plans, today, minuteKey, monthlyGoal],
   );
 
-  const normalizedQuery = normalizeSearchQuery(query);
+  // 归一化只在查询词变化时做一次；下面的 filterRecords 仍会自己归一化，方便单独调用
+  const normalizedQuery = useMemo(() => normalizeSearchQuery(query), [query]);
   const filteredRecords = useMemo(() => filterRecords(records, query), [records, query]);
   const groups = useMemo(() => groupByDate(sortRecords(filteredRecords)), [filteredRecords]);
   const shownGroups = groups.slice(0, visibleGroups);
@@ -160,7 +162,7 @@ export function Home({
       : week.previous.earnings > 0
         ? week.difference === 0
           ? '较上周持平'
-          : `较上周 ${week.difference > 0 ? '+' : '-'}¥${formatMoney(Math.abs(week.difference))}`
+          : `较上周 ${formatSignedMoney(week.difference)}`
         : '上周无记录';
   const weekTrendClass =
     week.current.shifts === 0
@@ -170,12 +172,6 @@ export function Home({
         : week.difference < 0
           ? ' is-down'
           : '';
-  const shownEarnings = useAnimatedNumber(monthSummary.earnings, {
-    resetKey: monthKey(year, monthIndex),
-  });
-  const shownWeekEarnings = useAnimatedNumber(week.current.earnings, {
-    resetKey: week.start,
-  });
 
   const changeQuery = (next: string) => {
     setQuery(next);
@@ -250,7 +246,10 @@ export function Home({
         </div>
         <p className="hero-amount">
           <span className="hero-currency">¥</span>
-          {formatMoney(shownEarnings)}
+          <AnimatedValue
+            value={monthSummary.earnings}
+            resetKey={monthKey(year, monthIndex)}
+          />
         </p>
         <div className="hero-stats">
           <div>
@@ -333,7 +332,7 @@ export function Home({
             </span>
             <span className="week-glance-amount">
               <small>¥</small>
-              {formatMoney(shownWeekEarnings)}
+              <AnimatedValue value={week.current.earnings} resetKey={week.start} />
             </span>
             <span className="week-glance-meta">
               {formatHours(week.current.minutes)}h

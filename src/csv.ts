@@ -48,8 +48,14 @@ const normalizeHeader = (value: string): string =>
     .replace(/（/g, '(')
     .replace(/）/g, ')');
 
-/** RFC 4180 风格的最小解析器：支持引号、转义引号、CRLF 与 BOM */
-export function parseCsvText(text: string): string[][] {
+/**
+ * 一次导入最多处理的数据行数。
+ * 5MB 的文件可能塞进十几万行，逐行解析 + 去重会让页面长时间无响应，
+ * 这里按「每天记一班记 54 年」的量级留足余量，超出直接提示拆分。
+ */
+export const MAX_CSV_ROWS = 20_000;
+
+/** RFC 4180 风格的最小解析器：支持引号、转义引号、CRLF 与 BOM */export function parseCsvText(text: string): string[][] {
   const source = text.replace(/^\uFEFF/, '');
   const rows: string[][] = [];
   let row: string[] = [];
@@ -160,6 +166,9 @@ export function parseCsvRecords(text: string, options: CsvImportOptions): CsvImp
   const rows = parseCsvText(text);
   if (rows.length < 2) {
     throw new Error('表格至少要有表头和一行数据');
+  }
+  if (rows.length - 1 > MAX_CSV_ROWS) {
+    throw new Error(`表格超过 ${MAX_CSV_ROWS} 行，请拆分后再导入`);
   }
   const header = mapHeaders(rows[0]);
   if (header.date === undefined || header.start === undefined || header.end === undefined) {

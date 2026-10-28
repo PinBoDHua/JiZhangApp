@@ -1,4 +1,5 @@
 import { useRef, useState } from 'react';
+import { TAB_LABELS } from '../app/tabs';
 import { useIsomorphicLayoutEffect } from '../hooks/useIsomorphicLayoutEffect';
 import type { Tab } from '../types';
 import { CalendarIcon, ChartIcon, NotebookIcon, SettingsIcon } from './Icons';
@@ -19,11 +20,12 @@ interface IndicatorBox {
   height: number;
 }
 
+/** 标签页中文名：底栏与页面级错误边界共用一处，避免两处写法漂移 */
 const tabs: { id: Tab; label: string; Icon: typeof NotebookIcon }[] = [
-  { id: 'home', label: '记录', Icon: NotebookIcon },
-  { id: 'calendar', label: '日历', Icon: CalendarIcon },
-  { id: 'stats', label: '统计', Icon: ChartIcon },
-  { id: 'settings', label: '设置', Icon: SettingsIcon },
+  { id: 'home', label: TAB_LABELS.home, Icon: NotebookIcon },
+  { id: 'calendar', label: TAB_LABELS.calendar, Icon: CalendarIcon },
+  { id: 'stats', label: TAB_LABELS.stats, Icon: ChartIcon },
+  { id: 'settings', label: TAB_LABELS.settings, Icon: SettingsIcon },
 ];
 
 export function BottomNav({

@@ -1,7 +1,9 @@
+import { round2 } from '../num';
 import type { MonthlySettlement } from '../types';
 import {
   formatDateFullCN,
   formatMoney,
+  formatSignedMoney,
   settlementTotals,
 } from '../utils';
 import { ChevronRightIcon, WalletIcon } from './Icons';
@@ -27,8 +29,7 @@ export function SettlementCard({
     ? (settlement?.paidAmount ?? totals.netDue)
     : totals.netDue;
   const difference = isPaid
-    ? Math.round(((settlement?.paidAmount ?? totals.netDue) - totals.netDue) * 100) /
-      100
+    ? round2((settlement?.paidAmount ?? totals.netDue) - totals.netDue)
     : 0;
   const hasAdjustments =
     totals.bonus > 0 || totals.deduction > 0 || totals.advance > 0;
@@ -95,7 +96,7 @@ export function SettlementCard({
 
       {isPaid && difference !== 0 ? (
         <span className={`settlement-card-diff${difference > 0 ? ' is-plus' : ' is-minus'}`}>
-          与应发相差 {difference > 0 ? '+' : '−'}¥{formatMoney(Math.abs(difference))}
+          与应发相差 {formatSignedMoney(difference)}
         </span>
       ) : null}
     </button>

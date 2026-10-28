@@ -28,6 +28,11 @@ export class ErrorBoundary extends Component<ErrorBoundaryProps, ErrorBoundarySt
     window.location.reload();
   };
 
+  /** 一次性/竞态类异常不必刷新整页，就地重建子树即可 */
+  handleRetry = (): void => {
+    this.setState({ error: null });
+  };
+
   handleExport = (): void => {
     // 先把排队中的写入落盘，导出的才是用户最后一次编辑后的数据
     flushActiveWrites();
@@ -46,11 +51,14 @@ export class ErrorBoundary extends Component<ErrorBoundaryProps, ErrorBoundarySt
       <div className="crash-screen" role="alert">
         <h1>页面出了点问题</h1>
         <p>
-          记录仍然保存在本机，没有丢失。可以先导出原始数据留存，再刷新页面继续使用。
+          记录仍然保存在本机，没有丢失。可以先重试；如果仍然打不开，再导出原始数据留存后刷新页面。
         </p>
         <p className="crash-detail">{error.message}</p>
         <div className="crash-actions">
-          <button type="button" className="primary-button" onClick={this.handleReload}>
+          <button type="button" className="primary-button" onClick={this.handleRetry}>
+            重试
+          </button>
+          <button type="button" className="ghost-button" onClick={this.handleReload}>
             刷新页面
           </button>
           <button type="button" className="ghost-button" onClick={this.handleExport}>
