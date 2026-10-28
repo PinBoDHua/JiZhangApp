@@ -7,7 +7,9 @@
 
 /* 页面容器保持不透明，View Transition 滑动时不会透出后面的内容 */
 .app-main {
-  background: var(--paper);
+  background:
+    radial-gradient(120% 32% at 100% 0%, rgba(216, 163, 59, 0.045), transparent 64%),
+    var(--paper);
 }
 
 /* 浮层打开时锁住页面滚动，避免背后内容跟着手指动 */
@@ -19,6 +21,33 @@ html.dialog-open .app-main {
 .app-shell {
   animation: app-fade 0.24s ease-out;
 }
+
+.screen > .section,
+.screen > .panel,
+.screen > .settings-section {
+  animation: content-arrive 0.42s var(--ease-enter) both;
+}
+
+.screen > .section:nth-of-type(2),
+.screen > .panel:nth-of-type(2),
+.screen > .settings-section:nth-of-type(2) {
+  animation-delay: 0.045s;
+}
+
+.screen > .section:nth-of-type(3),
+.screen > .panel:nth-of-type(3),
+.screen > .settings-section:nth-of-type(3) {
+  animation-delay: 0.08s;
+}
+
+.sheet-body .form > * {
+  animation: field-arrive 0.32s var(--ease-enter) both;
+}
+
+.sheet-body .form > *:nth-child(2) { animation-delay: 0.025s; }
+.sheet-body .form > *:nth-child(3) { animation-delay: 0.05s; }
+.sheet-body .form > *:nth-child(4) { animation-delay: 0.075s; }
+.sheet-body .form > *:nth-child(n + 5) { animation-delay: 0.1s; }
 
 /* ---------- 数字与进度 ---------- */
 

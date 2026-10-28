@@ -26,7 +26,7 @@ export function useTheme(theme: ThemePreference): 'light' | 'dark' {
     document.documentElement.dataset.theme = resolvedTheme;
     document.documentElement.style.colorScheme = resolvedTheme;
     const themeColor = document.querySelector('meta[name="theme-color"]');
-    themeColor?.setAttribute('content', resolvedTheme === 'dark' ? '#0f1512' : '#f4f0e7');
+    themeColor?.setAttribute('content', resolvedTheme === 'dark' ? '#101613' : '#f6f3ed');
     // 状态栏样式属于装饰：原生侧失败不应该影响页面本身
     void applyNativeStatusBar(resolvedTheme).catch(() => undefined);
   }, [resolvedTheme]);

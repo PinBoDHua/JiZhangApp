@@ -8,16 +8,16 @@
   align-items: center;
   justify-content: space-between;
   gap: 10px;
-  margin-bottom: 10px;
+  margin-bottom: 12px;
 }
 
 .calendar-mode-switch {
   display: inline-flex;
   flex: none;
-  gap: 2px;
-  padding: 3px;
+  gap: 3px;
+  padding: 4px;
   border: 1px solid var(--line);
-  border-radius: 12px;
+  border-radius: 14px;
   background: var(--surface);
 }
 
@@ -25,22 +25,23 @@
   display: inline-flex;
   align-items: center;
   justify-content: center;
-  gap: 4px;
-  min-height: 30px;
-  padding: 5px 11px;
+  gap: 5px;
+  min-height: 32px;
+  padding: 5px 12px;
   border: 0;
-  border-radius: 9px;
+  border-radius: 10px;
   background: transparent;
   color: var(--muted);
-  font-size: 10.5px;
+  font-size: 11px;
   cursor: pointer;
-  transition: background 0.16s ease, color 0.16s ease;
+  transition: background var(--dur-tap) ease, color var(--dur-tap) ease, transform var(--dur-tap) ease;
 }
 
 .calendar-mode-switch button.is-active {
   background: var(--btn-bg);
   color: var(--btn-fg);
   font-weight: 650;
+  box-shadow: 0 6px 14px -10px rgba(23, 36, 30, 0.75);
 }
 
 .calendar-mode-hint {
@@ -296,18 +297,19 @@
 .next-plan-card {
   position: relative;
   overflow: hidden;
-  margin-bottom: 12px;
-  padding: 14px 15px 13px 18px;
+  margin-bottom: 14px;
+  padding: 15px 15px 14px 18px;
   border: 1px solid var(--line);
-  border-radius: 22px;
+  border-radius: 23px;
   background:
     radial-gradient(
       120% 130% at 100% 0%,
-      color-mix(in srgb, var(--shift-color) 13%, transparent),
+      color-mix(in srgb, var(--shift-color) 14%, transparent),
       transparent 62%
     ),
     var(--surface);
   box-shadow: var(--shadow-card);
+  animation: content-arrive 0.42s var(--ease-enter) both;
 }
 
 .next-plan-card::before {

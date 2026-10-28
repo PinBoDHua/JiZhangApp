@@ -55,11 +55,11 @@
   align-items: baseline;
   justify-content: space-between;
   gap: 10px;
-  margin-top: 12px;
-  padding-top: 11px;
-  border-top: 1px solid rgba(244, 235, 217, 0.13);
-  color: rgba(244, 235, 217, 0.62);
-  font-size: 9.5px;
+  margin-top: 14px;
+  padding-top: 13px;
+  border-top: 1px solid rgba(244, 235, 217, 0.14);
+  color: rgba(244, 235, 217, 0.68);
+  font-size: 10.5px;
   letter-spacing: 0.02em;
 }
 

@@ -5,19 +5,19 @@ const config: CapacitorConfig = {
   appName: '工时账本',
   webDir: 'dist',
   android: {
-    backgroundColor: '#f4f0e7',
+    backgroundColor: '#f6f3ed',
   },
   plugins: {
     SplashScreen: {
       launchShowDuration: 700,
       launchAutoHide: true,
-      backgroundColor: '#f4f0e7',
+      backgroundColor: '#f6f3ed',
       androidScaleType: 'CENTER_CROP',
       showSpinner: false,
     },
     StatusBar: {
       style: 'LIGHT',
-      backgroundColor: '#f4f0e7',
+      backgroundColor: '#f6f3ed',
     },
     SystemBars: {
       // 边到边下由插件注入安全区变量，配合 CSS 里的 --safe-area-inset-* 使用

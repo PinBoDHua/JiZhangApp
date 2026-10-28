@@ -21,7 +21,7 @@ export async function applyNativeStatusBar(theme: 'light' | 'dark'): Promise<voi
   try {
     // Android 14 及以下仍可设置状态栏底色；15+ 会被系统忽略，忽略异常即可
     await StatusBar.setBackgroundColor({
-      color: theme === 'dark' ? '#0f1512' : '#f4f0e7',
+      color: theme === 'dark' ? '#101613' : '#f6f3ed',
     });
   } catch {
     // 边到边模式下不允许改背景色

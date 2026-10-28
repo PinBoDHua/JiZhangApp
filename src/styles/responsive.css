@@ -80,7 +80,8 @@
   }
 
   .bottom-nav {
-    border-radius: 0 0 34px 34px;
+    margin-bottom: 12px;
+    border-radius: 22px;
   }
 }
 

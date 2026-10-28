@@ -2,50 +2,54 @@
    原 index.css 第 1–302 行，按原顺序拆出；
    全局样式依赖先后顺序覆盖，改动前请确认没有跨文件的同名选择器。 */
 :root {
-  --paper: #f4f0e7;
-  --paper-deep: #ede7db;
-  --surface: #fbf8f2;
-  --white: #fffdf8;
+  --paper: #f6f3ed;
+  --paper-deep: #eee9df;
+  --surface: #fcfaf6;
+  --white: #fffefb;
   --ink: #17241e;
-  --ink-soft: #45544b;
-  --muted: #666d63;
-  --line: #e3dccf;
-  --line-strong: #d3c9b8;
-  --line-soft: #ede7dc;
+  --ink-soft: #44534a;
+  --muted: #626c64;
+  --line: #e2dcd1;
+  --line-strong: #cfc5b5;
+  --line-soft: #ece7dd;
   --accent: #d45a3c;
-  --accent-deep: #b2462c;
+  --accent-deep: #aa4229;
+  --accent-soft: rgba(212, 90, 60, 0.1);
   --gold: #d8a33b;
   --pine: #274236;
+  --pine-soft: rgba(39, 66, 54, 0.08);
   --cream: #f4ebd9;
   --danger: #a33f28;
   --radius-xl: 28px;
   --radius-lg: 22px;
   --radius-md: 16px;
-  --shadow-card: 0 18px 40px -30px rgba(23, 36, 30, 0.45);
+  --shadow-card: 0 1px 2px rgba(23, 36, 30, 0.025), 0 18px 42px -32px rgba(23, 36, 30, 0.5);
+  --shadow-raised: 0 24px 52px -30px rgba(23, 36, 30, 0.52);
+  --surface-glass: rgba(252, 250, 246, 0.86);
   --font-sans: "Avenir Next", "PingFang SC", "Hiragino Sans GB", "Microsoft YaHei", system-ui, -apple-system, sans-serif;
   --font-serif: "Iowan Old Style", "Palatino Linotype", "Songti SC", "Noto Serif SC", Georgia, serif;
   --tint-base: #fffdf8;
-  --hover-bg: rgba(23, 36, 30, 0.028);
+  --hover-bg: rgba(23, 36, 30, 0.035);
   --focus-color: #274236;
-  --placeholder: #8b8477;
-  --eyebrow: #8a6517;
+  --placeholder: #857f73;
+  --eyebrow: #805d14;
   --btn-bg: #17241e;
   --btn-fg: #f4ebd9;
   --nav-active-bg: #17241e;
   --nav-active-fg: #f4ebd9;
-  --sheet-header-bg: rgba(244, 240, 231, 0.96);
-  --nav-bg: rgba(247, 243, 235, 0.92);
+  --sheet-header-bg: rgba(246, 243, 237, 0.88);
+  --nav-bg: rgba(250, 247, 241, 0.84);
   --toast-bg: #17241e;
   --toast-fg: #f4ebd9;
   --bar-empty: #e6dfd2;
   --bar-data: #7a9183;
   --bar-hover: #526b5d;
-  --pill-bg: rgba(255, 253, 248, 0.62);
+  --pill-bg: rgba(255, 253, 248, 0.7);
   /* Motion 2.1：时长和曲线统一收口，快而不飘，慢而不拖 */
   --ease-enter: cubic-bezier(0.22, 1, 0.36, 1);
   --ease-exit: cubic-bezier(0.4, 0, 1, 1);
   --ease-standard: cubic-bezier(0.4, 0, 0.2, 1);
-  --ease-spring: cubic-bezier(0.34, 1.4, 0.64, 1);
+  --ease-spring: cubic-bezier(0.34, 1.28, 0.64, 1);
   --ease-sheet: cubic-bezier(0.33, 1, 0.68, 1);
   --dur-tap: 0.16s;
   --dur-enter: 0.38s;
@@ -60,40 +64,44 @@
 
 html[data-theme='dark'] {
   color-scheme: dark;
-  --paper: #0f1512;
-  --paper-deep: #1a231c;
-  --surface: #161f19;
-  --white: #1d2821;
+  --paper: #101613;
+  --paper-deep: #1b241e;
+  --surface: #18211b;
+  --white: #202b23;
   --ink: #f1eadc;
-  --ink-soft: #c9c4b5;
-  --muted: #96988d;
-  --line: #2a342c;
-  --line-strong: #3b473d;
-  --line-soft: #232d26;
-  --accent: #e26b4d;
-  --accent-deep: #f28a6c;
+  --ink-soft: #ccc7b8;
+  --muted: #a1a398;
+  --line: #2d382f;
+  --line-strong: #414d43;
+  --line-soft: #252f28;
+  --accent: #e67455;
+  --accent-deep: #f39275;
+  --accent-soft: rgba(230, 116, 85, 0.13);
   --gold: #e0b45d;
   --pine: #a3bcab;
+  --pine-soft: rgba(163, 188, 171, 0.1);
   --cream: #f4ebd9;
   --danger: #f08b70;
   --tint-base: #101913;
-  --hover-bg: rgba(255, 255, 255, 0.04);
+  --hover-bg: rgba(255, 255, 255, 0.045);
   --focus-color: #e0b45d;
-  --placeholder: #7f8378;
+  --placeholder: #898d82;
   --eyebrow: #d7ac5d;
   --btn-bg: #efe5d2;
   --btn-fg: #14201a;
   --nav-active-bg: #efe5d2;
   --nav-active-fg: #14201a;
-  --sheet-header-bg: rgba(15, 21, 18, 0.96);
-  --nav-bg: rgba(12, 18, 15, 0.93);
+  --sheet-header-bg: rgba(16, 22, 19, 0.9);
+  --nav-bg: rgba(16, 22, 18, 0.86);
   --toast-bg: #efe5d2;
   --toast-fg: #131c16;
   --bar-empty: #2b352d;
   --bar-data: #849b8c;
   --bar-hover: #a8bcae;
-  --pill-bg: rgba(255, 255, 255, 0.045);
-  --shadow-card: 0 18px 40px -30px rgba(0, 0, 0, 0.85);
+  --pill-bg: rgba(255, 255, 255, 0.06);
+  --shadow-card: 0 1px 2px rgba(0, 0, 0, 0.16), 0 20px 44px -30px rgba(0, 0, 0, 0.9);
+  --shadow-raised: 0 24px 52px -28px rgba(0, 0, 0, 0.92);
+  --surface-glass: rgba(24, 33, 27, 0.88);
 }
 
 *,
@@ -114,9 +122,9 @@ body {
   font-family: var(--font-sans);
   color: var(--ink);
   background:
-    radial-gradient(1100px 720px at 8% -12%, #ece2d0 0%, transparent 55%),
-    radial-gradient(900px 620px at 100% 108%, #e1e6db 0%, transparent 52%),
-    #ece6da;
+    radial-gradient(1100px 720px at 8% -12%, #eee5d7 0%, transparent 55%),
+    radial-gradient(900px 620px at 100% 108%, #e3e8df 0%, transparent 52%),
+    #eae5dc;
   -webkit-font-smoothing: antialiased;
   text-rendering: optimizeLegibility;
 }
@@ -133,9 +141,23 @@ button {
 
 button:focus-visible,
 input:focus-visible,
+textarea:focus-visible,
+select:focus-visible,
 a:focus-visible {
   outline: 2px solid var(--focus-color);
-  outline-offset: 2px;
+  outline-offset: 3px;
+}
+
+button,
+a,
+input,
+textarea,
+select {
+  touch-action: manipulation;
+}
+
+button:disabled {
+  -webkit-tap-highlight-color: transparent;
 }
 
 ::selection {
@@ -152,7 +174,9 @@ a:focus-visible {
   height: 100vh;
   height: 100dvh;
   margin: 0 auto;
-  background: var(--paper);
+  background:
+    radial-gradient(120% 42% at 100% 0%, rgba(216, 163, 59, 0.045), transparent 62%),
+    var(--paper);
   overflow: hidden;
 }
 
@@ -193,7 +217,7 @@ html[data-vt-kind='nav'] .app-main {
 }
 
 .screen {
-  padding: calc(22px + var(--safe-top)) 20px 108px;
+  padding: calc(24px + var(--safe-top)) 20px 104px;
 }
 
 /* ---------- Common ---------- */
@@ -206,23 +230,29 @@ html[data-vt-kind='nav'] .app-main {
   align-items: center;
   justify-content: center;
   gap: 7px;
+  min-height: 44px;
   border: 0;
   border-radius: 14px;
-  padding: 13px 20px;
-  font-size: 13px;
+  padding: 12px 20px;
+  font-size: 13.5px;
   font-weight: 650;
   cursor: pointer;
-  transition: transform 0.16s ease, background 0.16s ease, box-shadow 0.16s ease;
+  transition:
+    transform var(--dur-tap) var(--ease-standard),
+    background var(--dur-tap) ease,
+    border-color var(--dur-tap) ease,
+    box-shadow var(--dur-tap) ease;
 }
 
 .primary-button {
   background: var(--btn-bg);
   color: var(--btn-fg);
-  box-shadow: 0 12px 24px -16px rgba(23, 36, 30, 0.8);
+  box-shadow: 0 14px 26px -18px rgba(23, 36, 30, 0.85);
 }
 
 .primary-button:hover {
   transform: translateY(-1px);
+  box-shadow: 0 17px 30px -18px rgba(23, 36, 30, 0.9);
 }
 
 .primary-button:active {
@@ -237,13 +267,14 @@ html[data-vt-kind='nav'] .app-main {
 }
 
 .ghost-button {
-  background: transparent;
+  background: var(--surface);
   border: 1px solid var(--line);
   color: var(--ink-soft);
 }
 
 .ghost-button:hover {
-  background: rgba(23, 36, 30, 0.04);
+  border-color: var(--line-strong);
+  background: var(--white);
 }
 
 .danger-button {
@@ -252,7 +283,7 @@ html[data-vt-kind='nav'] .app-main {
 }
 
 .section {
-  margin-top: 27px;
+  margin-top: 30px;
 }
 
 .section-head {
@@ -260,19 +291,20 @@ html[data-vt-kind='nav'] .app-main {
   align-items: flex-end;
   justify-content: space-between;
   gap: 12px;
-  margin-bottom: 12px;
+  margin-bottom: 14px;
 }
 
 .section-head h2 {
   margin: 0;
-  font-size: 16px;
-  font-weight: 720;
-  letter-spacing: -0.01em;
+  font-size: 17px;
+  font-weight: 740;
+  letter-spacing: -0.02em;
 }
 
 .section-head p {
   margin: 4px 0 0;
-  font-size: 10.5px;
+  font-size: 11px;
+  line-height: 1.5;
   color: var(--muted);
 }
 
@@ -281,14 +313,15 @@ html[data-vt-kind='nav'] .app-main {
   align-items: center;
   gap: 3px;
   flex: none;
-  padding: 6px 0;
+  min-height: 34px;
+  padding: 5px 0;
   border: 0;
   background: none;
   color: var(--ink-soft);
-  font-size: 10.5px;
+  font-size: 11px;
   font-weight: 650;
   cursor: pointer;
-  transition: color 0.16s ease;
+  transition: color var(--dur-tap) ease;
 }
 
 .text-button:hover {
