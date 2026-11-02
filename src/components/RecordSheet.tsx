@@ -23,6 +23,7 @@ import {
   workedMinutes,
 } from '../utils';
 import { validateShiftDraft } from '../shiftDraft';
+import type { MonthlySettlement } from '../types';
 import { BottomSheet } from './BottomSheet';
 import { CalendarIcon, CopyIcon } from './Icons';
 import {
@@ -56,6 +57,8 @@ interface RecordSheetProps {
   recentRecord?: WorkRecord | null;
   /** 周末 / 节假日自动倍数规则；只在新建时带出，编辑历史记录不覆盖 */
   dayRule?: DayPayRule;
+  /** 工资结算记录：该月已到账时提示改动会影响应发与差额 */
+  settlements?: MonthlySettlement[];
   onClose: () => void;
   onSave: (input: RecordInput) => void;
   onDelete?: () => void;
@@ -146,6 +149,7 @@ export function RecordSheet({
   initialDate,
   recentRecord,
   dayRule,
+  settlements,
   onClose,
   onSave,
   onDelete,
@@ -174,6 +178,9 @@ export function RecordSheet({
   const dayHint = multiplierTouched ? '' : describeDayRule(dayRule, draft.date);
   const error = validateShiftDraft(draft, raw);
   const valid = error === '';
+  const settledMonth = (settlements ?? []).some(
+    (item) => item.monthKey === draft.date.slice(0, 7) && item.status === 'paid',
+  );
 
   const patch = (next: Partial<Draft>) => {
     setDraft((prev) => ({ ...prev, ...next }));
@@ -341,6 +348,12 @@ export function RecordSheet({
               </div>
             </div>
           </div>
+        ) : null}
+
+        {settledMonth ? (
+          <p className="settled-note" role="note">
+            这个月已经结算到账，改动会同步影响应发与差额
+          </p>
         ) : null}
 
         {!record && plan ? (

@@ -714,3 +714,14 @@
   line-height: 1.5;
   text-align: center;
 }
+
+/* 该月已结算时的提醒：不是错误，用琥珀色提示即可 */
+.settled-note {
+  margin: 0 0 4px;
+  padding: 8px 12px;
+  border-radius: 10px;
+  background: rgba(216, 163, 59, 0.14);
+  color: var(--gold-deep, #8a6416);
+  font-size: 12px;
+  line-height: 1.55;
+}

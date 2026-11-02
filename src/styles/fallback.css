@@ -111,3 +111,13 @@
 .storage-banner button:active {
   background: rgba(255, 255, 255, 0.16);
 }
+
+/* 另一个窗口也开着账本时的提示：用琥珀色区分“警告”而不是“写盘失败” */
+.storage-banner.tab-warning {
+  background: var(--gold);
+  color: #2a1d05;
+}
+
+.storage-banner.tab-warning button {
+  border-color: rgba(42, 29, 5, 0.45);
+}

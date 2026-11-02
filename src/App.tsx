@@ -13,6 +13,7 @@ import { useAppBackButton, useAppShortcuts } from './hooks/useAppNavigation';
 import { useAppData } from './hooks/useAppData';
 import { useBackupActions } from './hooks/useBackupActions';
 import { useInstallPrompt } from './hooks/useInstallPrompt';
+import { useMultiTabGuard } from './hooks/useMultiTabGuard';
 import { useIsomorphicLayoutEffect } from './hooks/useIsomorphicLayoutEffect';
 import { usePlanActions } from './hooks/usePlanActions';
 import { useRecordActions } from './hooks/useRecordActions';
@@ -74,6 +75,7 @@ export default function App() {
   const { sheet, closing, openSheet, closeSheet, confirm, askConfirm, closeConfirm } =
     useSheetController();
   useStorageSync(reload);
+  const multiTab = useMultiTabGuard();
 
   const [calendarFocus, setCalendarFocus] = useState<{ date: string; token: number } | null>(null);
   const [tab, setTab] = useState<Tab>('home');
@@ -365,6 +367,14 @@ export default function App() {
           </button>
         </div>
       ) : null}
+      {multiTab.hasOtherTabs && !multiTab.dismissed ? (
+        <div className="storage-banner tab-warning" role="status">
+          <span>另一个窗口也在打开账本，同时编辑可能互相覆盖，建议只留一个</span>
+          <button type="button" onClick={multiTab.dismiss}>
+            知道了
+          </button>
+        </div>
+      ) : null}
       <main className="app-main" ref={mainRef} inert={overlayOpen}>
         <div className="screen-slot" key={tab}>
           {/* 每页一层错误边界：单页渲染失败时仍可用底栏切走，不必整页刷新 */}
@@ -486,6 +496,7 @@ export default function App() {
               defaultTemplate,
               dayRule: preferences.dayRule,
               monthlyGoal: preferences.monthlyGoal,
+              settlements,
               reminder: {
                 available: reminderStatus.supported,
                 enabled: preferences.reminderEnabled,

@@ -9,7 +9,13 @@ import { RotationSheet } from '../components/RotationSheet';
 import { SettlementSheet } from '../components/SettlementSheet';
 import { StartTimingSheet } from '../components/StartTimingSheet';
 import { TemplateSheet } from '../components/TemplateSheet';
-import type { DayPayRule, PlannedShift, ShiftTemplate, WorkRecord } from '../types';
+import type {
+  DayPayRule,
+  MonthlySettlement,
+  PlannedShift,
+  ShiftTemplate,
+  WorkRecord,
+} from '../types';
 import { todayISO } from '../utils';
 import type { SheetState } from './sheetState';
 
@@ -49,6 +55,8 @@ export interface SheetData {
   dayRule?: DayPayRule;
   /** 月收入目标，目标浮层用它回填当前值 */
   monthlyGoal: number;
+  /** 工资结算：编辑记录时提示“该月已结算”，避免改完才发现影响应发 */
+  settlements: MonthlySettlement[];
   reminder: {
     available: boolean;
     enabled: boolean;
@@ -101,6 +109,7 @@ export function SheetRouter({ sheet, guard, data, actions }: SheetRouterProps) {
           initialDate={sheet.date}
           recentRecord={sheet.record || sheet.plan ? undefined : data.latestRecord}
           dayRule={data.dayRule}
+          settlements={data.settlements}
           onClose={actions.close}
           onSave={actions.saveRecord}
           onDelete={sheet.record ? actions.deleteRecord : undefined}

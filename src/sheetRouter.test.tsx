@@ -79,6 +79,7 @@ const data: SheetData = {
   defaultTemplate: DEFAULT_TEMPLATES[0],
   dayRule: DEFAULT_DAY_PAY_RULE,
   monthlyGoal: 5000,
+  settlements: [],
   reminder: { available: true, enabled: true, leadMinutes: 60 },
 };
 
@@ -101,8 +102,10 @@ const actions: SheetActions = {
   sharePayslip: noop,
 };
 
-function render(sheet: SheetState, guard = false): string {
-  return renderToString(<SheetRouter sheet={sheet} guard={guard} data={data} actions={actions} />);
+function render(sheet: SheetState, guard = false, overrides: Partial<SheetData> = {}): string {
+  return renderToString(
+    <SheetRouter sheet={sheet} guard={guard} data={{ ...data, ...overrides }} actions={actions} />,
+  );
 }
 
 /**
@@ -153,4 +156,23 @@ describe('浮层路由', () => {
     // Escape 逻辑在 effect 里，SSR 无法直接断言；这里锁住「guard 不改变渲染结果」
     expect(render({ kind: 'goal' }, true)).toBe(render({ kind: 'goal' }, false));
   });
+  it('把已结算月份透传到记录编辑面板', () => {
+    const settled = [
+      {
+        monthKey: '2026-10',
+        status: 'paid' as const,
+        paidAt: '2026-11-01',
+        paidAmount: 3200,
+        note: '',
+        adjustments: [],
+        updatedAt: 1,
+      },
+    ];
+    // record 的日期是 2026-10-24，属于已到账月份
+    expect(render({ kind: 'record', record }, false, { settlements: settled })).toContain(
+      '已经结算到账',
+    );
+    expect(render({ kind: 'record', record })).not.toContain('已经结算到账');
+  });
+
 });
