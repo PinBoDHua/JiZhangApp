@@ -2,15 +2,13 @@
 <!--
   Android 12+ 的云备份 / 设备迁移规则。
   与 backup_rules.xml 保持一致：只带走 WebView 里的账本数据。
+  domain 取值同 backup_rules.xml，cache / no_backup 不在备份范围内。
 -->
 <data-extraction-rules>
     <cloud-backup>
         <include domain="root" path="app_webview/" />
-        <exclude domain="cache" path="." />
-        <exclude domain="no_backup" path="." />
     </cloud-backup>
     <device-transfer>
         <include domain="root" path="app_webview/" />
-        <exclude domain="cache" path="." />
     </device-transfer>
 </data-extraction-rules>
