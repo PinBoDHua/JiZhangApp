@@ -28,6 +28,34 @@ export async function applyNativeStatusBar(theme: 'light' | 'dark'): Promise<voi
   }
 }
 
+/** 导出文件统一用这两个前缀命名，便于清理历史残留 */
+const EXPORT_PREFIXES = ['工时账本-', '工资条-'];
+
+/**
+ * 清掉上一次导出的临时文件。
+ *
+ * 每次都写同名文件会把 Cache 越堆越多（每天一份备份，一个月就是三十份）；
+ * 这里在写新文件前顺手删掉同前缀的旧文件，既控制体积又不影响本次分享。
+ */
+async function purgeExportCache(keep: string): Promise<void> {
+  try {
+    const listing = await Filesystem.readdir({ path: '', directory: Directory.Cache });
+    const stale = listing.files
+      .map((file) => file.name)
+      .filter(
+        (name) =>
+          name !== keep && EXPORT_PREFIXES.some((prefix) => name.startsWith(prefix)),
+      );
+    await Promise.all(
+      stale.map((name) =>
+        Filesystem.deleteFile({ path: name, directory: Directory.Cache }).catch(() => undefined),
+      ),
+    );
+  } catch {
+    // 清理失败不影响本次导出
+  }
+}
+
 export async function exportFile(
   filename: string,
   content: string,
@@ -38,6 +66,8 @@ export async function exportFile(
     downloadFile(filename, content, mime);
     return;
   }
+
+  await purgeExportCache(filename);
 
   const file = await Filesystem.writeFile({
     path: filename,

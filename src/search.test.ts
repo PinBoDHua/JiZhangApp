@@ -56,6 +56,12 @@ describe('filterRecords', () => {
     expect(filterRecords(latin, 'night')).toHaveLength(1);
   });
 
+  it('folds full-width characters typed by a Chinese IME', () => {
+    // 中文输入法在中文态打出的「２０２６」应当能搜到半角日期
+    expect(normalizeSearchQuery('　２０２６　')).toBe('2026');
+    expect(filterRecords(rows, '２０２６-０９')).toHaveLength(1);
+  });
+
   it('returns an empty list when nothing matches', () => {
     expect(filterRecords(rows, '不存在')).toEqual([]);
   });

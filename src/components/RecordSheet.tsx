@@ -1,4 +1,5 @@
 import { useState } from 'react';
+import { useIsDirty } from '../hooks/useIsDirty';
 import {
   SHIFT_COLORS,
   type DayPayRule,
@@ -251,6 +252,8 @@ export function RecordSheet({
     });
   };
 
+  const dirty = useIsDirty(draft);
+
   const today = todayISO();
   const yesterday = addDaysISO(today, -1);
 
@@ -266,6 +269,7 @@ export function RecordSheet({
       }
       onClose={onClose}
       escapeDisabled={escapeDisabled}
+      dirty={dirty}
       action={
         record && onDelete ? (
           <button type="button" className="sheet-delete" onClick={onDelete}>
@@ -411,6 +415,7 @@ export function RecordSheet({
             onChange={(event) => patch({ note: event.target.value })}
             placeholder="可选，如：顶班、加班两小时"
             maxLength={FIELD_LIMITS.note}
+            aria-label="备注"
           />
         </div>
       </div>

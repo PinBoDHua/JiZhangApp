@@ -13,9 +13,15 @@ const FOCUSABLE = [
 const trapStack: symbol[] = [];
 
 function visibleFocusable(container: HTMLElement): HTMLElement[] {
-  return Array.from(container.querySelectorAll<HTMLElement>(FOCUSABLE)).filter(
-    (node) => node.getClientRects().length > 0,
-  );
+  return Array.from(container.querySelectorAll<HTMLElement>(FOCUSABLE)).filter((node) => {
+    if (node.getClientRects().length === 0) return false;
+    // visibility: hidden 仍然有 client rects，必须单独排除，否则 Tab 会把焦点
+    // 交给看不见的按钮
+    if (typeof getComputedStyle === 'function') {
+      if (getComputedStyle(node).visibility === 'hidden') return false;
+    }
+    return true;
+  });
 }
 
 /**

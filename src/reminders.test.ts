@@ -2,6 +2,7 @@ import { describe, expect, it } from 'vitest';
 import {
   buildReminderCandidates,
   buildReminderContent,
+  buildReminderPlan,
   normalizeReminderLead,
   planStartMs,
   reminderIdForPlan,
@@ -108,6 +109,16 @@ describe('reminder helpers', () => {
   it('normalizes unsupported lead options to the default', () => {
     expect(normalizeReminderLead(120)).toBe(120);
     expect(normalizeReminderLead(45)).toBe(60);
+  });
+
+  it('reports the full candidate count even when the schedule is truncated', () => {
+    const now = new Date(2026, 9, 1, 0, 0, 0).getTime();
+    const plans = Array.from({ length: 60 }, (_, index) =>
+      makePlan({ id: `plan-${index}`, date: `2026-10-${String((index % 28) + 2).padStart(2, '0')}` }),
+    );
+    const plan = buildReminderPlan(plans, now, 60, 50);
+    expect(plan.candidates).toHaveLength(50);
+    expect(plan.total).toBeGreaterThan(50);
   });
 
   it('creates stable positive 32-bit notification ids', () => {

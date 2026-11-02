@@ -1,9 +1,14 @@
 import type { WorkRecord } from './types';
 import { formatDateCN } from './utils';
 
-/** 搜索输入归一化：去首尾空格并统一小写，中文不受影响 */
+/**
+ * 搜索输入归一化：去首尾空格、统一小写，并做 NFKC 兼容分解。
+ *
+ * 中文输入法在中文态打出的“２０２６”“Ａ班”是全角字符，NFKC 会折叠成
+ * 半角，否则用户搜“２０２６”永远匹配不到半角日期。
+ */
 export function normalizeSearchQuery(value: string): string {
-  return value.trim().toLowerCase();
+  return value.trim().normalize('NFKC').toLowerCase();
 }
 
 /**

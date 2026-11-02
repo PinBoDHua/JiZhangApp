@@ -1,5 +1,6 @@
 import type { CSSProperties } from 'react';
 import {
+  FIELD_LIMITS,
   SHIFT_COLORS,
   SHIFT_COLOR_NAMES,
   type OvertimeRule,
@@ -20,6 +21,7 @@ import {
   rawMinutes,
   workedMinutes,
 } from '../utils';
+import { round2 } from '../num';
 import { MoonIcon } from './Icons';
 import { MultiplierOptions } from './MultiplierOptions';
 import { NumberInput } from './NumberInput';
@@ -97,7 +99,7 @@ export function ShiftChipsField({
             value={shiftName}
             onChange={(event) => onChange({ shiftName: event.target.value })}
             placeholder="填写班次名称，如：中班"
-            maxLength={12}
+            maxLength={FIELD_LIMITS.shiftName}
             aria-label="班次名称"
             aria-invalid={!shiftName.trim() || undefined}
           />
@@ -293,7 +295,12 @@ export function OvertimeField({
     standardMinutes: DEFAULT_STANDARD_MINUTES,
     multiplier: DEFAULT_OVERTIME_MULTIPLIER,
   };
-  const standardHours = effective.standardMinutes / 60;
+  // computePay 实际用的是 max(班次倍数, 加班规则倍数)，界面必须同一口径，
+  // 否则班次 2× + 规则 1.5× 时会出现“高亮 2×、文案写 1.5×”的矛盾
+  const appliedOvertimeMultiplier = Math.max(effective.multiplier, multiplier);
+  // 保留 2 位小数：minutes 反向折算是无限小数（500 分 → 8.3333…），
+  // 直接把长浮点回填输入框会让「8.33」在输入过程中被改写成 8.333333333333334
+  const standardHours = round2(effective.standardMinutes / 60);
   const pay = computePay({
     minutes,
     rate,
@@ -378,7 +385,7 @@ export function OvertimeField({
             <div className="field">
               <span className="field-label">加班倍数</span>
               <MultiplierOptions
-                value={Math.max(effective.multiplier, multiplier)}
+                value={appliedOvertimeMultiplier}
                 min={Math.max(MIN_OVERTIME_MULTIPLIER, multiplier)}
                 label="选择加班倍数"
                 onChange={(next) => onChange({ ...effective, multiplier: next })}
@@ -387,8 +394,8 @@ export function OvertimeField({
           </div>
           <p className="field-hint overtime-hint">
             {pay.overtimeMinutes > 0
-              ? `正常 ${formatHours(pay.regularMinutes)}h ¥${formatMoney(pay.regularPay)} · 加班 ${formatHours(pay.overtimeMinutes)}h ×${pay.overtime?.multiplier ?? effective.multiplier} ¥${formatMoney(pay.overtimePay)}`
-              : `不超过 ${formatHours(effective.standardMinutes)} 小时的部分按正常倍数，超出部分按 ${effective.multiplier}× 计算。`}
+              ? `正常 ${formatHours(pay.regularMinutes)}h ¥${formatMoney(pay.regularPay)} · 加班 ${formatHours(pay.overtimeMinutes)}h ×${pay.overtime?.multiplier ?? appliedOvertimeMultiplier} ¥${formatMoney(pay.overtimePay)}`
+              : `不超过 ${formatHours(effective.standardMinutes)} 小时的部分按正常倍数，超出部分按 ${appliedOvertimeMultiplier}× 计算。`}
           </p>
         </>
       ) : (

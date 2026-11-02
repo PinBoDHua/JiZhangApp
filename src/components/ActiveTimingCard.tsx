@@ -7,7 +7,7 @@ import {
   formatElapsed,
   formatMoney,
 } from '../utils';
-import { useClock } from '../useClock';
+import { useNow } from '../useClock';
 import { ClockIcon, CloseIcon, PauseIcon, PlayIcon, StopIcon } from './Icons';
 
 interface ActiveTimingCardProps {
@@ -25,7 +25,7 @@ export function ActiveTimingCard({
   onStop,
   onAbandon,
 }: ActiveTimingCardProps) {
-  const { timestamp } = useClock();
+  const timestamp = useNow();
   const isPaused = Boolean(shift.pausedAt);
   const wallMinutes = Math.max(0, Math.floor((timestamp - shift.startedAt) / 60_000));
   const workedMinutes = activeWorkedMinutes(shift, timestamp);

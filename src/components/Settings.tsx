@@ -1,5 +1,6 @@
 import { useRef, useState, type CSSProperties } from 'react';
 import type { DayPayRule, ShiftTemplate, ThemePreference } from '../types';
+import { FIELD_LIMITS } from '../types';
 import {
   DAY_MULTIPLIER_OPTIONS,
   formatMultiplier,
@@ -10,7 +11,7 @@ import {
 import { isNativeApp } from '../native';
 import { REMINDER_LEAD_OPTIONS } from '../reminders';
 import type { ReminderStatus } from '../reminderService';
-import { useClock } from '../useClock';
+import { useNow } from '../useClock';
 import {
   formatDuration,
   formatMoney,
@@ -108,7 +109,7 @@ export function Settings({
 }: SettingsProps) {
   const fileInputRef = useRef<HTMLInputElement>(null);
   const csvInputRef = useRef<HTMLInputElement>(null);
-  const { timestamp: now } = useClock();
+  const now = useNow();
   const [holidayDate, setHolidayDate] = useState('');
   const [holidayLabel, setHolidayLabel] = useState('');
   const holidayReady = isHolidayDateISO(holidayDate);
@@ -383,7 +384,7 @@ export function Settings({
                     <input
                       className="text-input"
                       value={holidayLabel}
-                      maxLength={12}
+                      maxLength={FIELD_LIMITS.holidayLabel}
                       placeholder="名称，如国庆"
                       onChange={(event) => setHolidayLabel(event.target.value)}
                       aria-label="节假日名称"
@@ -465,7 +466,9 @@ export function Settings({
                   >
                     {reminder.permission === 'granted'
                       ? reminder.scheduled > 0
-                        ? `已为未来 ${reminder.scheduled} 个排班安排提醒`
+                        ? reminder.total !== undefined && reminder.total > reminder.scheduled
+                          ? `已为最近 ${reminder.scheduled} 个排班安排提醒（共 ${reminder.total} 个，超出单次上限）`
+                          : `已为未来 ${reminder.scheduled} 个排班安排提醒`
                         : '暂无未来排班，排班后会自动安排提醒'
                       : '通知权限未开启，请到系统设置中允许通知'}
                   </p>

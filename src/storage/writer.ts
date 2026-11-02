@@ -20,8 +20,8 @@ export interface WriteQueue {
   schedule(key: string, write: () => void): void;
   /** 立刻写入所有待落盘的任务 */
   flush(): void;
-  /** 是否还有未落盘的变更（用于调试与测试） */
-  hasPending(): boolean;
+  /** 是否还有未落盘的变更；传 key 只查该集合 */
+  hasPending(key?: string): boolean;
 }
 
 export function createWriteQueue(delay = WRITE_DELAY_MS): WriteQueue {
@@ -58,7 +58,7 @@ export function createWriteQueue(delay = WRITE_DELAY_MS): WriteQueue {
     }, delay);
   };
 
-  return { schedule, flush, hasPending: () => tasks.size > 0 };
+  return { schedule, flush, hasPending: (key?: string) => (key === undefined ? tasks.size > 0 : tasks.has(key)) };
 }
 
 /**

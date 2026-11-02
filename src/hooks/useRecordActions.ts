@@ -10,6 +10,7 @@ import type {
 } from '../types';
 import type { RecordDraft } from '../batch';
 import { hapticImpact, hapticSuccess } from '../feedback';
+import { resolveDayRule } from '../dayRule';
 import { formatTimeHM, rawMinutes, toISODate, uid } from '../utils';
 import { toPlanHistoryEntry } from '../planStats';
 
@@ -46,6 +47,7 @@ export function useRecordActions({
   closeConfirm,
   archivePlan,
   restorePlan,
+  dayRule,
 }: RecordActionsOptions) {
   const saveRecord = useCallback(
     (input: RecordInput) => {
@@ -196,19 +198,22 @@ export function useRecordActions({
         return;
       }
       const now = new Date();
+      const startDate = toISODate(now);
       const shift: ActiveShift = {
         templateId: template.id,
         sourcePlanId: null,
         shiftName: template.name,
         shiftColor: template.color,
-        startDate: toISODate(now),
+        startDate,
         startTime: formatTimeHM(now),
         startedAt: now.getTime(),
         pausedAt: null,
         pausedMs: 0,
         breakMinutes: template.breakMinutes,
         rate: template.rate,
-        multiplier: 1,
+        // 与手动记账、批量补记共用同一套日期规则：
+        // 否则周末/节假日打卡会按 1× 入账，同一天两种入口金额对不上
+        multiplier: resolveDayRule(dayRule, startDate).multiplier,
         note: '',
         overtime: template.overtime ?? null,
       };
@@ -217,7 +222,7 @@ export function useRecordActions({
       closeSheet();
       notify('打卡已开始');
     },
-    [activeShift, setActiveShift, closeSheet, notify],
+    [activeShift, dayRule, setActiveShift, closeSheet, notify],
   );
 
   const pauseTiming = useCallback(() => {
@@ -254,14 +259,11 @@ export function useRecordActions({
       notify('计时太短，稍后再结束');
       return;
     }
-    // 打开结算面板时先把计时冻结，避免面板停留期间金额继续变化；
-    // 关闭面板后保持暂停，用户可以继续或再结算（面板内已有说明）。
-    const pausedShift = activeShift.pausedAt
-      ? activeShift
-      : { ...activeShift, pausedAt: now.getTime() };
-    if (!activeShift.pausedAt) setActiveShift(pausedShift);
-    openSheet({ kind: 'endTiming', shift: pausedShift, endTime, endAt: now.getTime() });
-  }, [activeShift, setActiveShift, openSheet, notify]);
+    // 只把“结束时刻”冻结在面板里，不改动计时本身。
+    // 这里过去会顺手把计时暂停，用户关掉面板继续上班却忘了点“继续”时，
+    // 那段时长会被累计成休息并在结算时默认扣除，直接少算工资。
+    openSheet({ kind: 'endTiming', shift: activeShift, endTime, endAt: now.getTime() });
+  }, [activeShift, openSheet, notify]);
 
   const saveTimingEnd = useCallback(
     (input: TimingEndInput) => {

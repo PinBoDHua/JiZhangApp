@@ -37,14 +37,21 @@ export interface ReminderCandidate {
   leadMinutes: number;
 }
 
-export function buildReminderCandidates(
+export interface ReminderPlan {
+  /** 实际会排进系统通知的候选（受上限截断） */
+  candidates: ReminderCandidate[];
+  /** 全部符合条件的候选数量；大于 candidates.length 说明被截断了 */
+  total: number;
+}
+
+export function buildReminderPlan(
   plans: PlannedShift[],
   nowMs: number,
   leadMinutes: number,
   limit = MAX_SCHEDULED_REMINDERS,
-): ReminderCandidate[] {
+): ReminderPlan {
   const fallbackLead = normalizeReminderLead(leadMinutes);
-  return plans
+  const all = plans
     .filter((plan) => plan.reminderEnabled !== false)
     .map((plan) => {
       const planLead =
@@ -58,8 +65,20 @@ export function buildReminderCandidates(
       };
     })
     .filter((candidate) => candidate.notifyAt > nowMs)
-    .sort((a, b) => a.notifyAt - b.notifyAt)
-    .slice(0, Math.max(0, limit));
+    .sort((a, b) => a.notifyAt - b.notifyAt);
+  return {
+    candidates: all.slice(0, Math.max(0, limit)),
+    total: all.length,
+  };
+}
+
+export function buildReminderCandidates(
+  plans: PlannedShift[],
+  nowMs: number,
+  leadMinutes: number,
+  limit = MAX_SCHEDULED_REMINDERS,
+): ReminderCandidate[] {
+  return buildReminderPlan(plans, nowMs, leadMinutes, limit).candidates;
 }
 
 export function reminderIdForPlan(planId: string): number {

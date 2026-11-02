@@ -1,5 +1,5 @@
 import { useState } from 'react';
-import type { ActiveShift, OvertimeRule } from '../types';
+import type { ActiveShift, DayPayRule, OvertimeRule } from '../types';
 import { computePay } from '../pay';
 import {
   activePauseMs,
@@ -10,10 +10,12 @@ import {
   isOvernight,
   rawMinutes,
 } from '../utils';
+import { describeDayRule } from '../dayRule';
 import { BottomSheet } from './BottomSheet';
 import { MoonIcon } from './Icons';
 import { NumberInput } from './NumberInput';
 import { MultiplierField, OvertimeField } from './ShiftFormFields';
+import { FIELD_LIMITS } from '../types';
 
 interface EndTimingInput {
   breakMinutes: number;
@@ -26,6 +28,8 @@ interface EndTimingSheetProps {
   shift: ActiveShift;
   endTime: string;
   endAt: number;
+  /** 日期倍率规则：只用于说明本次倍数是怎么来的 */
+  dayRule?: DayPayRule;
   onClose: () => void;
   onSave: (input: EndTimingInput) => void;
   escapeDisabled?: boolean;
@@ -35,6 +39,7 @@ export function EndTimingSheet({
   shift,
   endTime,
   endAt,
+  dayRule,
   onClose,
   onSave,
   escapeDisabled = false,
@@ -58,6 +63,7 @@ export function EndTimingSheet({
   const earnings = pay.total;
   const valid = totalMinutes > 0 && breakMinutes >= 0 && breakMinutes < totalMinutes && multiplier > 0;
   const overnight = isOvernight(shift.startTime, endTime);
+  const dayRuleHint = describeDayRule(dayRule, shift.startDate);
 
   const updateBreak = (next: number) => {
     const value = Number.isFinite(next) ? Math.round(next) : 0;
@@ -140,6 +146,7 @@ export function EndTimingSheet({
               ? `本次共暂停 ${pauseMinutes} 分钟，已作为默认休息扣除`
               : `本次没有暂停计时，默认按班次休息 ${shift.breakMinutes} 分钟`}
           </p>
+          {dayRuleHint ? <p className="field-hint">按日期规则带出：{dayRuleHint}</p> : null}
         </div>
 
         <div className="field">
@@ -191,11 +198,14 @@ export function EndTimingSheet({
             value={note}
             onChange={(event) => setNote(event.target.value)}
             placeholder="可选，如：顶班、加班两小时"
-            maxLength={40}
+            maxLength={FIELD_LIMITS.note}
+            aria-label="备注"
           />
         </div>
 
-        <p className="end-hint">关闭本页后计时会保持暂停，可以稍后继续或再结算。</p>
+        <p className="end-hint">
+          关闭本页不会结束计时，可以继续上班；再次点“结束记账”会重新取结束时间。
+        </p>
       </div>
     </BottomSheet>
   );

@@ -72,6 +72,29 @@ export function isLedgerStorageKey(key: string | null): boolean {
 }
 
 export const STORAGE_ERROR_EVENT = 'shift-ledger:storage-error';
+/** 写入从“失败”恢复到“成功”时触发，界面据此收起降级提示条 */
+export const STORAGE_WRITE_OK_EVENT = 'shift-ledger:storage-ok';
+
+/**
+ * 最近一次写入是否失败。
+ * 配额耗尽后用户往往继续编辑，只有顶部常驻提示条能让他们意识到“还没存下去”。
+ */
+let storageFailing = false;
+
+export function isStorageFailing(): boolean {
+  return storageFailing;
+}
+
+function markWriteFailed(): void {
+  storageFailing = true;
+}
+
+function markWriteOk(): void {
+  if (!storageFailing) return;
+  storageFailing = false;
+  if (typeof window === 'undefined' || typeof window.dispatchEvent !== 'function') return;
+  window.dispatchEvent(new CustomEvent(STORAGE_WRITE_OK_EVENT));
+}
 /** 读到损坏 JSON 且已保全原文时触发，界面据此提示用户导出副本 */
 export const STORAGE_RECOVERY_EVENT = 'shift-ledger:storage-recovery';
 
@@ -193,7 +216,7 @@ export function clearRecovery(): void {
 }
 
 /** 同一份损坏内容只保全、通知一次；换成新的损坏内容会覆盖旧副本 */
-function preserveCorrupt(key: string, raw: string): void {
+function preserveRaw(key: string, raw: string): void {
   try {
     const map = readRecoveryMap();
     if (map[key]?.raw === raw) return;
@@ -206,6 +229,29 @@ function preserveCorrupt(key: string, raw: string): void {
   } catch {
     // 存储已满或被禁用：保全失败也不能影响正常读取
   }
+}
+
+/** JSON 解析失败：原文整段保全 */
+function preserveCorrupt(key: string, raw: string): void {
+  preserveRaw(key, raw);
+}
+
+/**
+ * 校验不通过被过滤掉的条目也保全一份。
+ *
+ * 这些条目 JSON 是合法的，所以走不到 preserveCorrupt；但下一次任何编辑
+ * 都会把过滤后的集合写回，它们就永久消失了。保全到恢复副本后，
+ * 界面上的“导出副本”至少还能把它们捞回来。
+ */
+export function preserveDropped(key: string, dropped: unknown[]): void {
+  if (dropped.length === 0) return;
+  let raw: string;
+  try {
+    raw = JSON.stringify(dropped);
+  } catch {
+    return;
+  }
+  preserveRaw(key, raw);
 }
 
 export function reportStorageError(key: string, error: unknown): void {
@@ -224,7 +270,9 @@ export function writeJson(key: string, value: unknown): void {
   if (!hasLocalStorage()) return;
   try {
     localStorage.setItem(key, JSON.stringify(value));
+    markWriteOk();
   } catch (error) {
+    markWriteFailed();
     reportStorageError(key, error);
   }
 }
@@ -233,7 +281,9 @@ export function removeStorageKey(key: string): void {
   if (!hasLocalStorage()) return;
   try {
     localStorage.removeItem(key);
+    markWriteOk();
   } catch (error) {
+    markWriteFailed();
     reportStorageError(key, error);
   }
 }

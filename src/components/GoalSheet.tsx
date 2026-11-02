@@ -1,4 +1,5 @@
 import { useState } from 'react';
+import { useIsDirty } from '../hooks/useIsDirty';
 import { sanitizeNumberText } from '../numberText';
 import { formatMoney } from '../utils';
 import { BottomSheet } from './BottomSheet';
@@ -16,6 +17,7 @@ export function GoalSheet({ goal, onClose, onSave, escapeDisabled = false }: Goa
   const [draft, setDraft] = useState(goal > 0 ? String(goal) : '');
   const value = draft.trim() === '' ? 0 : Number(draft);
   const valid = Number.isFinite(value) && value >= 0 && value <= 10_000_000;
+  const dirty = useIsDirty(draft);
 
   return (
     <BottomSheet
@@ -23,6 +25,7 @@ export function GoalSheet({ goal, onClose, onSave, escapeDisabled = false }: Goa
       subtitle="给每个月一个看得见的终点"
       onClose={onClose}
       escapeDisabled={escapeDisabled}
+      dirty={dirty}
       footer={
         <>
           {!valid ? <p className="form-error" role="alert">请输入 0 到 1000 万之间的金额</p> : null}

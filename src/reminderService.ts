@@ -2,8 +2,8 @@ import { Capacitor, type PermissionState } from '@capacitor/core';
 import { LocalNotifications } from '@capacitor/local-notifications';
 import type { PlannedShift } from './types';
 import {
-  buildReminderCandidates,
   buildReminderContent,
+  buildReminderPlan,
   reminderIdForPlan,
   type ReminderCandidate,
 } from './reminders';
@@ -15,6 +15,8 @@ export interface ReminderStatus {
   permission: ReminderPermission;
   exactAlarm: PermissionState | null;
   scheduled: number;
+  /** 符合条件的提醒总数；大于 scheduled 说明被上限截断 */
+  total?: number;
 }
 
 interface PendingNotification {
@@ -35,11 +37,18 @@ export function initialReminderStatus(): ReminderStatus {
     permission: isReminderSupported() ? 'prompt' : 'unsupported',
     exactAlarm: null,
     scheduled: 0,
+    total: 0,
   };
 }
 
 function unsupportedStatus(): ReminderStatus {
-  return { supported: false, permission: 'unsupported', exactAlarm: null, scheduled: 0 };
+  return {
+    supported: false,
+    permission: 'unsupported',
+    exactAlarm: null,
+    scheduled: 0,
+    total: 0,
+  };
 }
 
 function isManaged(notification: PendingNotification): boolean {
@@ -132,6 +141,7 @@ export async function getReminderStatus(): Promise<ReminderStatus> {
       permission: permission.display,
       exactAlarm,
       scheduled: managed.length,
+      total: managed.length,
     };
   } catch {
     return { supported: true, permission: 'denied', exactAlarm: null, scheduled: 0 };
@@ -169,10 +179,12 @@ async function performSync(
         permission: permission.display,
         exactAlarm,
         scheduled: 0,
+        total: 0,
       };
     }
 
-    const candidates = buildReminderCandidates(plans, Date.now(), leadMinutes);
+    const plan = buildReminderPlan(plans, Date.now(), leadMinutes);
+    const candidates = plan.candidates;
     if (!sameSchedule(managed, candidates)) {
       await cancelAll(managed);
       if (candidates.length > 0) {
@@ -187,6 +199,7 @@ async function performSync(
       permission: permission.display,
       exactAlarm,
       scheduled: candidates.length,
+      total: plan.total,
     };
   } catch {
     return { supported: true, permission: 'denied', exactAlarm: null, scheduled: 0 };

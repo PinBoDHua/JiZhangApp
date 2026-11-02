@@ -1,5 +1,5 @@
 import type { CSSProperties } from 'react';
-import { useClock } from '../useClock';
+import { useNow } from '../useClock';
 import type { PlannedShift, WorkRecord } from '../types';
 import { findMissedPlans } from '../planStats';
 import {
@@ -32,7 +32,7 @@ export function MissedPlansSheet({
   onSkip,
   escapeDisabled = false,
 }: MissedPlansSheetProps) {
-  const { date: now } = useClock();
+  const now = new Date(useNow());
   const missedPlans = findMissedPlans(plans, now, activePlanId);
   const recordCountByDate = new Map<string, number>();
   records.forEach((record) => {

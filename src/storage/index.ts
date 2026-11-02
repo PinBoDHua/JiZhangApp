@@ -17,6 +17,7 @@ import {
   LEGACY_KEYS,
   STORAGE_KEYS,
   migrateStorage,
+  preserveDropped,
   readJson,
   removeStorageKey,
   writeJson,
@@ -44,8 +45,10 @@ export {
   STORAGE_ERROR_EVENT,
   STORAGE_KEYS,
   STORAGE_RECOVERY_EVENT,
+  STORAGE_WRITE_OK_EVENT,
   clearRecovery,
   isLedgerStorageKey,
+  isStorageFailing,
   migrateStorage,
   readRawStorageSnapshot,
   readRecoveryMap,
@@ -63,7 +66,9 @@ export { isISODate, isPlanHistoryEntry, isPlannedShift, isShiftTemplate, isTimeH
 const loaders = {
   records(): WorkRecord[] {
     const records = readJson<unknown>(STORAGE_KEYS.records, LEGACY_KEYS.records, []);
-    return Array.isArray(records) ? records.filter(isWorkRecord) : [];
+    return Array.isArray(records)
+      ? validRows(records, isWorkRecord, STORAGE_KEYS.records)
+      : [];
   },
   templates(): ShiftTemplate[] {
     const templates = readJson<unknown>(
@@ -72,7 +77,9 @@ const loaders = {
       DEFAULT_TEMPLATES,
     );
     if (!Array.isArray(templates)) return DEFAULT_TEMPLATES.map((template) => ({ ...template }));
-    return templates.filter(isShiftTemplate).map((template) => ({ ...template }));
+    return validRows(templates, isShiftTemplate, STORAGE_KEYS.templates).map((template) => ({
+      ...template,
+    }));
   },
   preferences(): AppPreferences {
     const stored = readJson<unknown>(
@@ -104,7 +111,7 @@ const loaders = {
     );
     if (!Array.isArray(stored)) return [];
     const map = new Map<string, MonthlySettlement>();
-    stored.filter(isMonthlySettlement).forEach((settlement) => {
+    validRows(stored, isMonthlySettlement, STORAGE_KEYS.settlements).forEach((settlement) => {
       const existing = map.get(settlement.monthKey);
       if (!existing || settlement.updatedAt >= existing.updatedAt) {
         map.set(settlement.monthKey, settlement);
@@ -116,7 +123,9 @@ const loaders = {
     const stored = readJson<unknown>(STORAGE_KEYS.plans, LEGACY_KEYS.plans, []);
     if (!Array.isArray(stored)) return [];
     const map = new Map<string, PlannedShift>();
-    stored.filter(isPlannedShift).forEach((plan) => map.set(plan.id, plan));
+    validRows(stored, isPlannedShift, STORAGE_KEYS.plans).forEach((plan) =>
+      map.set(plan.id, plan),
+    );
     return sortPlans(Array.from(map.values()));
   },
   planHistory(): PlanHistoryEntry[] {
@@ -127,7 +136,7 @@ const loaders = {
     );
     if (!Array.isArray(stored)) return [];
     const map = new Map<string, PlanHistoryEntry>();
-    stored.filter(isPlanHistoryEntry).forEach((entry) => {
+    validRows(stored, isPlanHistoryEntry, STORAGE_KEYS.planHistory).forEach((entry) => {
       const existing = map.get(entry.id);
       if (!existing || entry.completedAt >= existing.completedAt) {
         map.set(entry.id, entry);
@@ -138,6 +147,29 @@ const loaders = {
     );
   },
 };
+
+/**
+ * 校验并保全被丢弃的条目。
+ *
+ * 直接 filter 会让坏条目静默消失，而下一次任何编辑都会把过滤后的集合写回磁盘，
+ * 于是它们就永久没了。这里把丢弃的条目另存一份到恢复副本，
+ * 至少还能通过“导出副本”找回原始数据。
+ */
+function validRows<T>(
+  rows: unknown[],
+  guard: (value: unknown) => value is T,
+  key: string,
+): T[] {
+  if (rows.length === 0) return [];
+  const valid: T[] = [];
+  const dropped: unknown[] = [];
+  rows.forEach((row) => {
+    if (guard(row)) valid.push(row);
+    else dropped.push(row);
+  });
+  preserveDropped(key, dropped);
+  return valid;
+}
 
 /** 偏好设置归一化：任何一项坏掉都回退到默认值，不影响其它设置 */
 export function normalizePreferences(stored: unknown): AppPreferences {

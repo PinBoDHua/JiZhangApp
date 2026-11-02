@@ -1,4 +1,5 @@
 import { useState } from 'react';
+import { useIsDirty } from '../hooks/useIsDirty';
 import { FIELD_LIMITS } from '../types';
 import type { DayPayRule, PlannedShift, ShiftTemplate, WorkRecord } from '../types';
 import {
@@ -114,7 +115,11 @@ export function BatchRecordSheet({
   const error = validateShiftDraft(draft, raw);
   const rangeDays = batchRangeDays(startDate, endDate);
   const dates = enumerateBatchDates(startDate, endDate, weekdays);
-  const slots = planBatchDates(dates, records, plans);
+  const slots = planBatchDates(dates, records, plans, {
+    shiftName: draft.shiftName,
+    start: draft.start,
+    end: draft.end,
+  });
   const freeSlots = slots.filter((slot) => slot.status === 'free');
   const freeDates = freeSlots.map((slot) => slot.date);
   const skipped = slots.length - freeSlots.length;
@@ -122,6 +127,14 @@ export function BatchRecordSheet({
     ...draft,
     multiplier: autoMultiplier ? null : manualMultiplier,
   };
+  const dirty = useIsDirty({
+    draft,
+    startDate,
+    endDate,
+    weekdays,
+    autoMultiplier,
+    manualMultiplier,
+  });
   const totals = summarizeBatch(freeDates, effectiveDraft, dayRule);
   const canSave = error === '' && freeDates.length > 0;
 
@@ -152,6 +165,7 @@ export function BatchRecordSheet({
       subtitle="选一段时间，把漏掉的班一次补齐"
       onClose={onClose}
       escapeDisabled={escapeDisabled}
+      dirty={dirty}
       footer={
         <>
           {error ? (
@@ -169,7 +183,7 @@ export function BatchRecordSheet({
             </div>
             <span className="pay-preview-meta">
               {freeDates.length} 天 · {formatDuration(totals.minutes)}
-              {skipped > 0 ? ` · 跳过 ${skipped} 天已有记录` : ''}
+              {skipped > 0 ? ` · 跳过 ${skipped} 天已记过这一班` : ''}
             </span>
           </div>
           <button
@@ -321,7 +335,7 @@ export function BatchRecordSheet({
         {skipped > 0 ? (
           <p className="batch-note">
             <InfoIcon size={13} />
-            {skipped} 天已有记录，会自动跳过；其余 {freeDates.length} 天会生成新记录。
+            {skipped} 天已记过这一班，会自动跳过；其余 {freeDates.length} 天会生成新记录。
           </p>
         ) : null}
 
@@ -348,6 +362,7 @@ export function BatchRecordSheet({
             onChange={(event) => patch({ note: event.target.value })}
             placeholder="可选，会写入每一条记录"
             maxLength={FIELD_LIMITS.note}
+            aria-label="备注"
           />
         </div>
       </div>

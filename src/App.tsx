@@ -29,7 +29,10 @@ import {
   STORAGE_ERROR_EVENT,
   STORAGE_ERROR_MESSAGE,
   STORAGE_RECOVERY_EVENT,
+  STORAGE_WRITE_OK_EVENT,
   clearRecovery,
+  isStorageFailing,
+  readRawStorageSnapshot,
   readRecoveryMap,
 } from './storage';
 import type { AppShortcut } from './shortcuts';
@@ -76,6 +79,8 @@ export default function App() {
   const [tab, setTab] = useState<Tab>('home');
   const [statsPeriod, setStatsPeriod] = useState<StatsPeriod>('month');
   const [calendarMode, setCalendarMode] = useState<CalendarMode>('records');
+  /** 本地存储写入失败：常驻提示条，避免用户以为已保存 */
+  const [storageFailed, setStorageFailed] = useState(() => isStorageFailing());
   const mainRef = useRef<HTMLElement>(null);
 
   const goToTab = useCallback(
@@ -113,6 +118,7 @@ export default function App() {
     notifyWithAction,
     askConfirm,
     closeConfirm,
+    dayRule: preferences.dayRule,
   });
 
   const recordActions = useRecordActions({
@@ -133,6 +139,7 @@ export default function App() {
     closeConfirm,
     archivePlan: planActions.archivePlan,
     restorePlan: planActions.restorePlan,
+    dayRule: preferences.dayRule,
   });
 
   const backupActions = useBackupActions({
@@ -222,9 +229,27 @@ export default function App() {
   }, [tab]);
 
   useEffect(() => {
-    const onStorageError = () => notify(STORAGE_ERROR_MESSAGE);
+    const onStorageError = () => {
+      setStorageFailed(true);
+      notify(STORAGE_ERROR_MESSAGE);
+    };
+    const onStorageOk = () => setStorageFailed(false);
     window.addEventListener(STORAGE_ERROR_EVENT, onStorageError);
-    return () => window.removeEventListener(STORAGE_ERROR_EVENT, onStorageError);
+    window.addEventListener(STORAGE_WRITE_OK_EVENT, onStorageOk);
+    return () => {
+      window.removeEventListener(STORAGE_ERROR_EVENT, onStorageError);
+      window.removeEventListener(STORAGE_WRITE_OK_EVENT, onStorageOk);
+    };
+  }, [notify]);
+
+  /** 写盘失败时的兜底：把内存里的原始数据导出，避免刷新后丢失 */
+  const exportRawStorage = useCallback(() => {
+    downloadFile(
+      `工时账本-原始数据-${todayISO()}.json`,
+      JSON.stringify(readRawStorageSnapshot(), null, 2),
+      'application/json',
+    );
+    notify('原始数据已导出');
   }, [notify]);
 
   /**
@@ -244,7 +269,7 @@ export default function App() {
       notify('损坏数据的副本已导出');
     };
     const onRecovery = () =>
-      notifyWithAction('本地数据读取失败，原始内容已保留', '导出副本', exportRecovery);
+      notifyWithAction('部分本地数据无法识别，原始内容已保留', '导出副本', exportRecovery);
     // 首次读取发生在 effect 之前，补一次检查；跨会话没导出时会继续提醒
     if (Object.keys(readRecoveryMap()).length > 0) onRecovery();
     window.addEventListener(STORAGE_RECOVERY_EVENT, onRecovery);
@@ -332,6 +357,14 @@ export default function App() {
 
   return (
     <div className="app-shell">
+      {storageFailed ? (
+        <div className="storage-banner" role="alert">
+          <span>本地存储写入失败，最新修改可能未保存</span>
+          <button type="button" onClick={exportRawStorage}>
+            导出原始数据
+          </button>
+        </div>
+      ) : null}
       <main className="app-main" ref={mainRef} inert={overlayOpen}>
         <div className="screen-slot" key={tab}>
           {/* 每页一层错误边界：单页渲染失败时仍可用底栏切走，不必整页刷新 */}
@@ -391,7 +424,7 @@ export default function App() {
                 onOpenSettlement={openSettlement}
                 onOpenMissed={openMissedPlans}
                 onExportAnnualReport={handleShareAnnualReport}
-                initialPeriod={statsPeriod}
+                period={statsPeriod}
                 onPeriodChange={setStatsPeriod}
               />
             ) : null}

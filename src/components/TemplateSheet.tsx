@@ -1,4 +1,5 @@
 import { useState, type CSSProperties } from 'react';
+import { useIsDirty } from '../hooks/useIsDirty';
 import {
   SHIFT_COLORS,
   SHIFT_COLOR_NAMES,
@@ -62,6 +63,8 @@ export function TemplateSheet({
     setDraft((prev) => ({ ...prev, ...next }));
   };
 
+  const dirty = useIsDirty(draft);
+
   const handleSave = () => {
     if (!valid) return;
     onSave({
@@ -81,6 +84,7 @@ export function TemplateSheet({
       subtitle="设定好时间与时薪，记账时一键带出"
       onClose={onClose}
       escapeDisabled={escapeDisabled}
+      dirty={dirty}
       action={
         template && onDelete ? (
           <button type="button" className="sheet-delete" onClick={onDelete}>
@@ -120,6 +124,7 @@ export function TemplateSheet({
             onChange={(event) => patch({ name: event.target.value })}
             placeholder="如：白班、夜班、中班"
             maxLength={FIELD_LIMITS.templateName}
+            aria-label="班次名称"
           />
         </div>
 

@@ -1,8 +1,15 @@
-import { describe, expect, it } from 'vitest';
+import { afterAll, describe, expect, it, vi } from 'vitest';
 import { renderToString } from 'react-dom/server';
 import { DEFAULT_DAY_PAY_RULE } from './types';
 import type { ActiveShift, PlanHistoryEntry, PlannedShift, WorkRecord } from './types';
 import type { MonthForecast } from './forecast';
+
+// 固定系统时间：fixture 是 2026-10 的数据，而 Stats 默认锚定“当前月”。
+// 不固定的话，一旦真实日期走出 2026-10，“排班对账”就会消失，断言随机失败。
+// 必须放在动态 import 之前——useClock 的模块级快照在首次 import 时创建。
+vi.useFakeTimers();
+vi.setSystemTime(new Date(2026, 9, 28, 12, 0, 0));
+afterAll(() => vi.useRealTimers());
 
 // 这些组件只依赖 window.matchMedia / 定时器，渲染一次即可验证不会崩溃
 const stubWindow = {
@@ -119,6 +126,7 @@ describe('app smoke render', () => {
       renderToString(
         <PlanSheet
           templates={DEFAULT_TEMPLATES}
+          plans={[]}
           defaultTemplate={DEFAULT_TEMPLATES[0]}
           reminderAvailable
           globalReminderEnabled
@@ -131,6 +139,7 @@ describe('app smoke render', () => {
         <PlanSheet
           templates={DEFAULT_TEMPLATES}
           plan={plan}
+          plans={[]}
           defaultTemplate={null}
           reminderAvailable={false}
           globalReminderEnabled={false}
@@ -207,6 +216,8 @@ describe('app smoke render', () => {
           settlements={[]}
           onOpenSettlement={noop}
           onOpenMissed={noop}
+          period="month"
+          onPeriodChange={noop}
         />,
       ),
       renderToString(

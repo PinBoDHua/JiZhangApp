@@ -1,0 +1,11 @@
+<?xml version="1.0" encoding="utf-8"?>
+<!--
+  Android 11 及以下的备份规则。
+  账本数据全部在 WebView 的 localStorage 里（app_webview/），只备份这一块：
+  换机/重装后能自动带回账本，同时不把缓存等无关内容传上去。
+-->
+<full-backup-content>
+    <include domain="root" path="app_webview/" />
+    <exclude domain="cache" path="." />
+    <exclude domain="no_backup" path="." />
+</full-backup-content>

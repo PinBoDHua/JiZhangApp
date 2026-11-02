@@ -107,7 +107,9 @@ export function buildPlanReconciliation({
   const monthPlans = plans.filter((plan) => plan.date.startsWith(monthPrefix));
   const monthHistory = history.filter((entry) => entry.date.startsWith(monthPrefix));
   const monthRecords = records.filter((record) => record.date.startsWith(monthPrefix));
-  const recordsById = new Map(monthRecords.map((record) => [record.id, record]));
+  // 用全量记录判断“这条排班是否已经落成记录”：跨夜班或用户改过日期时，
+  // 记录可能落在下个月，只查本月会把已完成的排班误判成漏班（完成率归零）
+  const recordsById = new Map(records.map((record) => [record.id, record]));
   const duePlans: PlannedShift[] = [];
   let completed = 0;
   let skipped = 0;

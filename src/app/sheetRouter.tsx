@@ -115,6 +115,7 @@ export function SheetRouter({ sheet, guard, data, actions }: SheetRouterProps) {
           plan={sheet.plan}
           initialDate={sheet.date}
           defaultTemplate={data.defaultTemplate}
+          plans={data.plans}
           dayRule={data.dayRule}
           reminderAvailable={data.reminder.available}
           globalReminderEnabled={data.reminder.enabled}
@@ -200,6 +201,7 @@ export function SheetRouter({ sheet, guard, data, actions }: SheetRouterProps) {
           shift={sheet.shift}
           endTime={sheet.endTime}
           endAt={sheet.endAt}
+          dayRule={data.dayRule}
           onClose={actions.close}
           onSave={actions.saveTimingEnd}
           escapeDisabled={guard}

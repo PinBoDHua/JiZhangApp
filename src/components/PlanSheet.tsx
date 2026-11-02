@@ -1,4 +1,5 @@
 import { useState } from 'react';
+import { useIsDirty } from '../hooks/useIsDirty';
 import {
   SHIFT_COLORS,
   type DayPayRule,
@@ -14,6 +15,7 @@ import {
   formatDuration,
   formatHours,
   formatMoney,
+  freePlanDates,
   rawMinutes,
   repeatDatesISO,
   shiftPay,
@@ -54,6 +56,8 @@ interface PlanSheetProps {
   plan?: PlannedShift;
   initialDate?: string;
   defaultTemplate: ShiftTemplate | null;
+  /** 现有排班：按周重复时要跳过已有排班的日期，预览必须和保存同一口径 */
+  plans: PlannedShift[];
   /** 周末 / 节假日自动倍数规则 */
   dayRule?: DayPayRule;
   reminderAvailable: boolean;
@@ -140,6 +144,7 @@ export function PlanSheet({
   plan,
   initialDate,
   defaultTemplate,
+  plans,
   dayRule,
   reminderAvailable,
   globalReminderEnabled,
@@ -171,10 +176,14 @@ export function PlanSheet({
   const globalLeadLabel =
     REMINDER_LEAD_OPTIONS.find((option) => option.minutes === globalReminderLeadMinutes)?.label ??
     `${globalReminderLeadMinutes} 分钟`;
-  const dates = plan ? [draft.date] : repeatDatesISO(draft.date, repeatWeeks);
-  const lastDate = dates.at(-1) ?? draft.date;
+  const plannedDates = plan ? [draft.date] : repeatDatesISO(draft.date, repeatWeeks);
+  // 与 savePlan 完全同一口径：只有“按周重复”才跳过已有排班的日期，单日允许一天多班。
+  // 预览若用 plannedDates，会在部分日期被占用时多算班数和收入。
+  const dates = plannedDates.length > 1 ? freePlanDates(plannedDates, plans) : plannedDates;
+  const skippedDates = plannedDates.length - dates.length;
+  const lastDate = plannedDates.at(-1) ?? draft.date;
   const error = validateShiftDraft(draft, raw);
-  const valid = error === '';
+  const valid = error === '' && dates.length > 0;
 
   const patch = (next: Partial<Draft>) => {
     setDraft((prev) => ({ ...prev, ...next }));
@@ -235,9 +244,12 @@ export function PlanSheet({
         reminderEnabled: draft.reminderEnabled,
         reminderLeadMinutes: draft.reminderLeadMinutes,
       },
-      dates,
+      // 交回完整日期，由动作层过滤并提示“跳过 N 天”，两处判定保持一致
+      plannedDates,
     );
   };
+
+  const dirty = useIsDirty(draft);
 
   const today = todayISO();
   const tomorrow = addDaysISO(today, 1);
@@ -248,6 +260,7 @@ export function PlanSheet({
       subtitle={plan ? '改动只影响这一次排班' : '提前安排好，到点一键打卡'}
       onClose={onClose}
       escapeDisabled={escapeDisabled}
+      dirty={dirty}
       action={
         plan && onDelete ? (
           <button type="button" className="sheet-delete" onClick={onDelete}>
@@ -258,9 +271,17 @@ export function PlanSheet({
       footer={
         <>
           {error ? <p className="form-error" role="alert">{error}</p> : null}
+          {!error && dates.length === 0 ? (
+            <p className="form-error" role="alert">
+              这些日期都已有排班，换个起始日期或缩短重复周数
+            </p>
+          ) : null}
           <div className="pay-preview">
             <div className="pay-preview-main">
-              <span>{dates.length > 1 ? `共 ${dates.length} 班预计` : '预计收入'}</span>
+              <span>
+                {dates.length > 1 ? `共 ${dates.length} 班预计` : '预计收入'}
+                {skippedDates > 0 ? `（跳过 ${skippedDates} 天已有排班）` : ''}
+              </span>
               <strong>
                 <small>¥</small>
                 {formatMoney(earnings * dates.length)}
@@ -281,7 +302,11 @@ export function PlanSheet({
             onClick={handleSave}
             disabled={!valid}
           >
-            {plan ? '保存修改' : dates.length > 1 ? `保存 ${dates.length} 个排班` : '保存排班'}
+            {plan
+              ? '保存修改'
+              : dates.length > 1
+                ? `保存 ${dates.length} 个排班`
+                : '保存排班'}
           </button>
         </>
       }
@@ -342,6 +367,7 @@ export function PlanSheet({
             {repeatWeeks > 1 ? (
               <p className="plan-repeat-summary">
                 每周重复，共 {dates.length} 班
+                {skippedDates > 0 ? `（跳过 ${skippedDates} 天已有排班）` : ''}
                 <small>
                   {formatDateCN(draft.date)} – {formatDateCN(lastDate)}
                 </small>
@@ -450,6 +476,7 @@ export function PlanSheet({
             onChange={(event) => patch({ note: event.target.value })}
             placeholder="可选，如：带新人、备货"
             maxLength={FIELD_LIMITS.note}
+            aria-label="备注"
           />
         </div>
       </div>

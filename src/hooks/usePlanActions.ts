@@ -9,6 +9,7 @@ import type {
 import type { RotationShift } from '../rotation';
 import { restorePendingPlan, toPlanHistoryEntry } from '../planStats';
 import { hapticImpact, hapticSuccess } from '../feedback';
+import { resolveDayRule } from '../dayRule';
 import { canStartPlan, formatDateCN, formatTimeHM, freePlanDates, sortPlans, toISODate, uid } from '../utils';
 
 /**
@@ -29,6 +30,7 @@ export function usePlanActions({
   notifyWithAction,
   askConfirm,
   closeConfirm,
+  dayRule,
 }: PlanActionsOptions) {
   const archivePlan = useCallback(
     (plan: PlannedShift, status: PlanHistoryStatus, recordId: string | null) => {
@@ -100,7 +102,8 @@ export function usePlanActions({
           end: entry.template.end,
           breakMinutes: entry.template.breakMinutes,
           rate: entry.template.rate,
-          multiplier: 1,
+          // 一次生成几十个班，逐日取倍数才能让周末/节假日班次算对
+          multiplier: resolveDayRule(dayRule, entry.date).multiplier,
           note: '',
           overtime: entry.template.overtime ?? null,
           createdAt: timestamp,
@@ -120,7 +123,7 @@ export function usePlanActions({
         setPlans((prev) => prev.filter((plan) => !createdIds.has(plan.id)));
       });
     },
-    [plans, setPlans, notify, notifyWithAction, closeSheet],
+    [plans, dayRule, setPlans, notify, notifyWithAction, closeSheet],
   );
 
   const requestDeletePlan = useCallback(() => {

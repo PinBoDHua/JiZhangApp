@@ -26,8 +26,9 @@ export function parseAppAction(input: string | null | undefined): AppShortcut | 
   const queryMatch = /[?&#]action=([a-z]+)/i.exec(trimmed);
   if (queryMatch) return normalize(queryMatch[1]);
 
-  // gongshi://record 或 gongshi:///batch
-  const schemeMatch = /^[a-z][a-z0-9+.-]*:\/\/([^/?#]*)([^?#]*)/i.exec(trimmed);
+  // 只认应用自己的 gongshi://：任意 https 链接的路径段不应被当成快捷方式，
+  // 否则外部网页用 VIEW intent 打开 https://anything/stats 就能驱动应用跳转
+  const schemeMatch = /^gongshi:\/\/([^/?#]*)([^?#]*)/i.exec(trimmed);
   if (schemeMatch) {
     return normalize(schemeMatch[1]) ?? normalize(schemeMatch[2].replace(/^\/+/, ''));
   }

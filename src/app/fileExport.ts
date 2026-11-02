@@ -1,9 +1,25 @@
 import { Capacitor } from '@capacitor/core';
 import { exportFile } from '../native';
 
-/** 系统分享面板被用户取消时的报错形态各家不同，统一用关键字判断 */
+/**
+ * 系统分享面板被用户取消时的报错形态各家不同，统一用关键字判断。
+ *
+ * 只匹配“整条消息就是取消”这一种形态：插件抛的是 `Share canceled`，
+ * 而 `/cancel/i` 会把路径里带 cancel 的文件名错误也当成取消，导致真实
+ * 失败被静默吞掉（既不提示，也不更新“上次备份时间”）。
+ */
 export function isCancelError(error: unknown): boolean {
-  return /cancel/i.test(error instanceof Error ? error.message : String(error));
+  const message = error instanceof Error ? error.message : String(error);
+  return /^(share\s+)?cancel(?:l)?ed$/i.test(message.trim());
+}
+
+/**
+ * 分享面板还没关闭时再次点导出：插件会直接 reject。
+ * 这不是失败，提示用户稍后再试即可，不该显示“导出失败”。
+ */
+export function isShareBusyError(error: unknown): boolean {
+  const message = error instanceof Error ? error.message : String(error);
+  return /sharing is in progress/i.test(message);
 }
 
 export interface SaveTextFileOptions {
@@ -41,6 +57,10 @@ export async function saveTextFile(
     return true;
   } catch (error) {
     if (isCancelError(error)) return false;
+    if (isShareBusyError(error)) {
+      notify('上一次分享还没结束，请稍后再试');
+      return false;
+    }
     notify(failure);
     return false;
   }

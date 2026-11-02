@@ -101,6 +101,42 @@ describe('batch backfill', () => {
     expect(slots[2].plan?.id).toBe('plan-2026-10-28');
   });
 
+  it('only skips the day when the same shift is already recorded', () => {
+    // 当天只记过一个 2 小时的短班，仍应允许补记白班
+    const shortShift: WorkRecord = {
+      ...record('2026-10-27'),
+      id: 'short',
+      shiftName: '短班',
+      start: '09:00',
+      end: '11:00',
+    };
+    const slots = planBatchDates(
+      ['2026-10-27'],
+      [shortShift],
+      [],
+      { shiftName: '白班', start: '08:00', end: '17:00' },
+    );
+    expect(slots[0].status).toBe('free');
+
+    // 同一天已经记过同样的白班，才跳过
+    const sameShift = planBatchDates(
+      ['2026-10-27'],
+      [record('2026-10-27')],
+      [],
+      { shiftName: '白班', start: '08:00', end: '17:00' },
+    );
+    expect(sameShift[0].status).toBe('recorded');
+
+    // 起止时间相同但名称不同的历史数据也视为同一班
+    const renamed = planBatchDates(
+      ['2026-10-27'],
+      [{ ...record('2026-10-27'), shiftName: '改名前的班' }],
+      [],
+      { shiftName: '白班', start: '08:00', end: '17:00' },
+    );
+    expect(renamed[0].status).toBe('recorded');
+  });
+
   it('applies the day rule per date when no multiplier is forced', () => {
     const records = buildBatchRecords(
       ['2026-10-30', '2026-10-31'],

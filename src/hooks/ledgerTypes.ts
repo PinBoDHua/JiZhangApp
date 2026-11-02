@@ -3,6 +3,7 @@ import type { ConfirmState, SheetState } from '../app/sheetState';
 import type {
   ActiveShift,
   AppPreferences,
+  DayPayRule,
   MonthlySettlement,
   PlanHistoryEntry,
   PlannedShift,
@@ -45,7 +46,13 @@ export interface LedgerUi {
 
 export type PlanActionsOptions = Pick<LedgerState, 'activeShift' | 'plans'> &
   Pick<LedgerSetters, 'setActiveShift' | 'setPlans' | 'setPlanHistory'> &
-  LedgerUi;
+  LedgerUi & {
+    /**
+     * 周末 / 节假日倍数规则。
+     * 轮班表一次生成几十个班，必须逐日取倍数，否则周末班会按 1× 入账。
+     */
+    dayRule?: DayPayRule;
+  };
 
 export type RecordActionsOptions = Pick<
   LedgerState,
@@ -64,6 +71,11 @@ export type RecordActionsOptions = Pick<
     ) => void;
     /** 删除记录时把排班还原成待上 */
     restorePlan: (entry: PlanHistoryEntry) => void;
+    /**
+     * 周末 / 节假日倍数规则。
+     * 打卡计时与手动记账必须用同一套规则，否则同一天两种入口金额不一致。
+     */
+    dayRule?: DayPayRule;
   };
 
 export type BackupActionsOptions = LedgerState &

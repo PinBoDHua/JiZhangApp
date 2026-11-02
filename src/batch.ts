@@ -52,29 +52,59 @@ export function batchRangeDays(start: string, end: string): number {
 
 export interface BatchDateSlot {
   date: string;
-  /** recorded = 当天已有记录，会被跳过 */
+  /** recorded = 当天已有「同一个班次」的记录，会被跳过（同一天的其他班次仍可补记） */
   status: 'free' | 'recorded';
   /** 当天已有的排班（用于补记后标记完成） */
   plan: PlannedShift | null;
 }
 
+/** 判断「这一天是否已经记过同一班」的口径：班次名相同，或起止时间相同 */
+export interface BatchIdentity {
+  shiftName: string;
+  start: string;
+  end: string;
+}
+
+function sameShift(record: WorkRecord, identity: BatchIdentity): boolean {
+  if (record.shiftName.trim() === identity.shiftName.trim()) return true;
+  return record.start === identity.start && record.end === identity.end;
+}
+
+/**
+ * 按天给出可补记状态。
+ *
+ * 传入 identity 时只把「同一天已经有同一班」的日期算作占用；同一天的其他班次
+ * 仍然可以补记（应用本身允许一天多班）。不传时退回旧口径：当天有任何记录就算占用。
+ */
 export function planBatchDates(
   dates: string[],
   records: WorkRecord[],
   plans: PlannedShift[],
+  identity?: BatchIdentity,
 ): BatchDateSlot[] {
-  const recorded = new Set(records.map((record) => record.date));
+  const recordsByDate = new Map<string, WorkRecord[]>();
+  records.forEach((record) => {
+    const list = recordsByDate.get(record.date) ?? [];
+    list.push(record);
+    recordsByDate.set(record.date, list);
+  });
   const plansByDate = new Map<string, PlannedShift[]>();
   sortPlans(plans).forEach((plan) => {
     const list = plansByDate.get(plan.date) ?? [];
     list.push(plan);
     plansByDate.set(plan.date, list);
   });
-  return dates.map((date) => ({
-    date,
-    status: recorded.has(date) ? 'recorded' : 'free',
-    plan: (plansByDate.get(date) ?? [])[0] ?? null,
-  }));
+  return dates.map((date) => {
+    const dayRecords = recordsByDate.get(date) ?? [];
+    const occupied = identity
+      ? dayRecords.some((record) => sameShift(record, identity))
+      : dayRecords.length > 0;
+    return {
+      date,
+      status: occupied ? 'recorded' : 'free',
+      plan: (plansByDate.get(date) ?? [])[0] ?? null,
+    };
+  });
 }
 
 export interface BatchDraft {

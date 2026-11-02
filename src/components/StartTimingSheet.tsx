@@ -5,7 +5,7 @@ import {
   formatTimeHM,
   toISODate,
 } from '../utils';
-import { useClock } from '../useClock';
+import { useNow } from '../useClock';
 import { BottomSheet } from './BottomSheet';
 import { CheckIcon, ClockIcon } from './Icons';
 
@@ -24,7 +24,7 @@ export function StartTimingSheet({
   onStart,
   escapeDisabled = false,
 }: StartTimingSheetProps) {
-  const { date } = useClock();
+  const date = new Date(useNow());
   const [selectedId, setSelectedId] = useState(
     () => defaultTemplate?.id ?? templates[0]?.id ?? null,
   );

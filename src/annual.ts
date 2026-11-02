@@ -202,7 +202,8 @@ export function buildAnnualSummary(records: WorkRecord[], year: number): AnnualS
     months.length > 0
       ? months.reduce((best, month) => (month.earnings > best.earnings ? month : best))
       : null;
-  const dayEntries = Array.from(dayMap.values());
+  // 先按日期升序，并列时与 bestMonth 一样取最早的一天（dayMap 是插入序，不可依赖）
+  const dayEntries = Array.from(dayMap.values()).sort((a, b) => a.date.localeCompare(b.date));
   const bestDay =
     dayEntries.length > 0
       ? dayEntries.reduce((best, day) => (day.earnings > best.earnings ? day : best))

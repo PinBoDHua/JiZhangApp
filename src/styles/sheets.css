@@ -703,3 +703,14 @@
   font-variant-numeric: tabular-nums;
 }
 
+
+/* ---------- 有未保存内容时的误触关闭提示 ---------- */
+.sheet-close-hint {
+  margin: 0;
+  padding: 6px 20px;
+  background: var(--accent-soft);
+  color: var(--accent-deep);
+  font-size: 12px;
+  line-height: 1.5;
+  text-align: center;
+}

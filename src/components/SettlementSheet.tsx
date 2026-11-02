@@ -1,21 +1,22 @@
 import { useState } from 'react';
+import { useIsDirty } from '../hooks/useIsDirty';
 import type {
   MonthlySettlement,
   SettlementAdjustment,
   SettlementAdjustmentKind,
   SettlementStatus,
 } from '../types';
+import { FIELD_LIMITS } from '../types';
 import {
   buildPayslipText,
   formatDuration,
   formatMoney,
   formatSignedMoney,
   settlementTotals,
-  toISODate,
   uid,
 } from '../utils';
 import { round2 } from '../num';
-import { useClock } from '../useClock';
+import { useToday } from '../useClock';
 import { sanitizeNumberText } from '../numberText';
 import { BottomSheet } from './BottomSheet';
 import { CloseIcon, PlusIcon } from './Icons';
@@ -68,8 +69,7 @@ export function SettlementSheet({
   onShare,
   escapeDisabled = false,
 }: SettlementSheetProps) {
-  const { date } = useClock();
-  const today = toISODate(date);
+  const today = useToday();
   const [adjustments, setAdjustments] = useState<SettlementAdjustment[]>(
     () => settlement?.adjustments.map((item) => ({ ...item })) ?? [],
   );
@@ -82,6 +82,7 @@ export function SettlementSheet({
   );
   const [note, setNote] = useState(settlement?.note ?? '');
 
+  const dirty = useIsDirty({ adjustments, status, paidAt, paidAmountInput, note });
   const totals = settlementTotals(baseEarnings, adjustments);
   const parsedPaidAmount =
     paidAmountInput.trim() === '' ? totals.netDue : Math.max(0, Number(paidAmountInput) || 0);
@@ -142,6 +143,7 @@ export function SettlementSheet({
       subtitle={monthLabel}
       onClose={onClose}
       escapeDisabled={escapeDisabled}
+      dirty={dirty}
       action={
         <button type="button" className="sheet-share" onClick={handleShare}>
           工资条
@@ -336,7 +338,8 @@ export function SettlementSheet({
             value={note}
             onChange={(event) => setNote(event.target.value)}
             placeholder="可选，如：加班补贴下月发"
-            maxLength={60}
+            maxLength={FIELD_LIMITS.settlementNote}
+            aria-label="结算备注"
           />
         </div>
       </div>

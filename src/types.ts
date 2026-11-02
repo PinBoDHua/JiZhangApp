@@ -174,6 +174,10 @@ export const FIELD_LIMITS = {
   shiftName: 20,
   /** 班次模板名称 */
   templateName: 12,
+  /** 工资结算备注 */
+  settlementNote: 60,
+  /** 节假日名称 */
+  holidayLabel: 12,
 } as const;
 
 export const DEFAULT_PREFERENCES: AppPreferences = {

@@ -23,4 +23,11 @@ describe('app shortcuts', () => {
     expect(parseAppAction('gongshi://unknown')).toBeNull();
     expect(parseAppAction('https://example.com/')).toBeNull();
   });
+
+  it('does not treat arbitrary URL paths as shortcuts', () => {
+    // 只认 gongshi://：外部网页用 VIEW intent 打开 https://x/stats 不应驱动应用
+    expect(parseAppAction('https://example.com/stats')).toBeNull();
+    expect(parseAppAction('https://evil.test/record')).toBeNull();
+    expect(parseAppAction('intent://batch')).toBeNull();
+  });
 });

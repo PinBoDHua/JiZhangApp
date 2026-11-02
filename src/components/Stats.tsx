@@ -1,7 +1,7 @@
 import { useMemo, useState } from 'react';
 import { buildPlanReconciliation } from '../planStats';
 import { buildMonthForecast } from '../forecast';
-import { useClock } from '../useClock';
+import { useNow } from '../useClock';
 import type {
   MonthlySettlement,
   PlanHistoryEntry,
@@ -53,8 +53,12 @@ interface StatsProps {
   onOpenSettlement: (context: SettlementOpenContext) => void;
   onOpenMissed: () => void;
   onExportAnnualReport?: (text: string, year: number) => void;
-  initialPeriod?: StatsPeriod;
-  onPeriodChange?: (period: StatsPeriod) => void;
+  /**
+   * 当前统计周期由外壳持有：首页“本周概览”与快捷方式都会请求切周期，
+   * 若这里只把初值塞进 useState，已挂载的页面会忽略后续请求。
+   */
+  period: StatsPeriod;
+  onPeriodChange: (period: StatsPeriod) => void;
 }
 
 const PERIOD_OPTIONS: { value: StatsPeriod; label: string }[] = [
@@ -80,15 +84,15 @@ export function Stats({
   onOpenSettlement,
   onOpenMissed,
   onExportAnnualReport,
-  initialPeriod = 'month',
+  period,
   onPeriodChange,
 }: StatsProps) {
-  const { date: current } = useClock();
+  const nowMs = useNow();
+  const current = useMemo(() => new Date(nowMs), [nowMs]);
   const today = toISODate(current);
   const currentWeekStart = getWeekRange(today).start;
   const currentYear = Number(today.slice(0, 4));
   const currentMonthIndex = Number(today.slice(5, 7)) - 1;
-  const [period, setPeriod] = useState<StatsPeriod>(initialPeriod);
   const [monthAnchor, setMonthAnchor] = useState(() => ({
     year: currentYear,
     monthIndex: currentMonthIndex,
@@ -205,9 +209,8 @@ export function Stats({
 
   const changePeriod = (next: StatsPeriod) => {
     if (next === period) return;
-    setPeriod(next);
     setSelectedKey(null);
-    onPeriodChange?.(next);
+    onPeriodChange(next);
   };
 
   const stepRange = (direction: number) => {

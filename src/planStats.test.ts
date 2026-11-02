@@ -168,6 +168,21 @@ describe('plan reconciliation', () => {
     expect(result.completionRate).toBeNull();
     expect(result.plannedDueEarnings).toBe(0);
   });
+
+  it('keeps a completed plan completed when its record lands in the next month', () => {
+    // 10/31 的排班完成后，记录日期被改到 11/01（或跨夜班记到了次日）：
+    // 只查本月记录会把它误判成漏班，完成率显示 0%
+    const result = buildPlanReconciliation({
+      plans: [],
+      history: [makeHistory({ id: 'h1', date: '2026-10-31', recordId: 'r9' })],
+      records: [makeRecord({ id: 'r9', date: '2026-11-01' })],
+      monthPrefix: '2026-10',
+      now: new Date(2026, 10, 2, 12, 0, 0),
+    });
+    expect(result.completed).toBe(1);
+    expect(result.missed).toBe(0);
+    expect(result.completionRate).toBe(1);
+  });
 });
 
 describe('plan history conversion', () => {

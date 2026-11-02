@@ -20,6 +20,12 @@ interface BottomSheetProps {
   children: ReactNode;
   footer?: ReactNode;
   escapeDisabled?: boolean;
+  /**
+   * 表单是否有未保存的修改。
+   * 为真时拦截「点遮罩 / 下滑 / Esc」这类误触关闭，只保留右上角关闭按钮；
+   * 否则用户填了半张表单、手指碰到遮罩就全丢了。
+   */
+  dirty?: boolean;
 }
 
 const DISMISS_DISTANCE = 96;
@@ -47,6 +53,7 @@ export function BottomSheet({
   children,
   footer,
   escapeDisabled = false,
+  dirty = false,
 }: BottomSheetProps) {
   const sheetRef = useFocusTrap<HTMLElement>();
   const backdropRef = useRef<HTMLDivElement>(null);
@@ -64,15 +71,32 @@ export function BottomSheet({
   const closing = useContext(SheetMotionContext);
   const [dragging, setDragging] = useState(false);
   const [dismissed, setDismissed] = useState(false);
+  const [closeBlockedHint, setCloseBlockedHint] = useState(false);
+  const hintTimerRef = useRef<number | null>(null);
   const blocked = closing || dismissed;
+
+  /** 有未保存内容时拦住误触关闭，并给出一次提示 */
+  const blockAccidentalClose = () => {
+    setCloseBlockedHint(true);
+    if (hintTimerRef.current !== null) window.clearTimeout(hintTimerRef.current);
+    hintTimerRef.current = window.setTimeout(() => {
+      hintTimerRef.current = null;
+      setCloseBlockedHint(false);
+    }, 2200);
+  };
 
   useEffect(() => {
     const onKeyDown = (event: KeyboardEvent) => {
-      if (event.key === 'Escape' && !escapeDisabled && !blocked) onClose();
+      if (event.key !== 'Escape' || escapeDisabled || blocked) return;
+      if (dirty) {
+        blockAccidentalClose();
+        return;
+      }
+      onClose();
     };
     window.addEventListener('keydown', onKeyDown);
     return () => window.removeEventListener('keydown', onKeyDown);
-  }, [onClose, escapeDisabled, blocked]);
+  }, [onClose, escapeDisabled, blocked, dirty]);
 
   useEffect(() => {
     document.documentElement.classList.add('sheet-open');
@@ -84,6 +108,7 @@ export function BottomSheet({
       if (frameRef.current !== null) cancelAnimationFrame(frameRef.current);
       if (settleTimerRef.current !== null) window.clearTimeout(settleTimerRef.current);
       if (closeTimerRef.current !== null) window.clearTimeout(closeTimerRef.current);
+      if (hintTimerRef.current !== null) window.clearTimeout(hintTimerRef.current);
     },
     [],
   );
@@ -163,6 +188,11 @@ export function BottomSheet({
   };
 
   const dismissByDrag = () => {
+    if (dirty) {
+      springBack();
+      blockAccidentalClose();
+      return;
+    }
     if (settleTimerRef.current !== null) {
       window.clearTimeout(settleTimerRef.current);
       settleTimerRef.current = null;
@@ -222,7 +252,12 @@ export function BottomSheet({
         dismissed ? ' is-dismissed' : ''
       }`}
       onMouseDown={(event) => {
-        if (!blocked && event.target === event.currentTarget) onClose();
+        if (blocked || event.target !== event.currentTarget) return;
+        if (dirty) {
+          blockAccidentalClose();
+          return;
+        }
+        onClose();
       }}
     >
       <section
@@ -248,6 +283,11 @@ export function BottomSheet({
           </div>
           <div className="sheet-action">{action}</div>
         </header>
+        {closeBlockedHint ? (
+          <p className="sheet-close-hint" role="status">
+            还有未保存的内容，点右上角关闭可放弃
+          </p>
+        ) : null}
         <div className="sheet-body">{children}</div>
         {footer ? <footer className="sheet-footer">{footer}</footer> : null}
       </section>
